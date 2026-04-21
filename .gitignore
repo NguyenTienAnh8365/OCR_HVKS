@@ -1,0 +1,20 @@
+# Env
+local/.env
+
+# Debug output
+local/debug_latex/
+local/debug_md/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# OS
+Thumbs.db
+.DS_Store

@@ -1,0 +1,1418 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OCR — VKS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:        #f5efe3;
+  --s1:        #fffdf8;
+  --s2:        #f7efe2;
+  --border:    rgba(114,91,55,0.10);
+  --border2:   rgba(114,91,55,0.16);
+  --border3:   rgba(114,91,55,0.26);
+  --text:      #2f261b;
+  --text2:     #675b4a;
+  --text3:     #a08f79;
+  --jade:      #157a62;
+  --jade-dim:  rgba(21,122,98,0.11);
+  --jade-glow: rgba(21,122,98,0.18);
+  --amber:     #b56b17;
+  --amber-dim: rgba(181,107,23,0.12);
+  --red:       #c45e55;
+  --red-dim:   rgba(196,94,85,0.11);
+  --mono:      'JetBrains Mono', monospace;
+  --sans:      'Be Vietnam Pro', sans-serif;
+}
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: var(--sans); font-size: 14px; line-height: 1.65; color: var(--text);
+  background: linear-gradient(160deg, #f9f4ea 0%, #efe6d5 100%);
+  -webkit-font-smoothing: antialiased;
+}
+body::before {
+  content:''; position:fixed; inset:0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+  opacity:0.022; pointer-events:none; z-index:0;
+}
+
+/* ── App shell ── */
+.app {
+  position: relative; z-index: 1;
+  display: flex; height: 100vh;
+  max-width: 1440px; margin: 0 auto;
+  padding: 1rem;
+  gap: 1rem;
+}
+
+/* ══════════════════════════════════════
+   LEFT PANEL
+══════════════════════════════════════ */
+.left-panel {
+  width: 500px; flex-shrink: 0;
+  display: flex; flex-direction: column;
+  background: linear-gradient(180deg, rgba(255,253,248,0.96) 0%, rgba(249,243,232,0.98) 100%);
+  border: 1px solid rgba(255,255,255,0.7);
+  border-radius: 22px;
+  box-shadow: 0 20px 50px rgba(110,88,54,0.12);
+  overflow: hidden;
+}
+
+/* Header */
+.lp-head {
+  padding: 1.25rem 1.25rem 1rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+}
+.logo-eyebrow { font-family:var(--mono); font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--jade); margin-bottom:1px; }
+.logo-title { font-size:22px; font-weight:600; letter-spacing:-.6px; color:var(--text); line-height:1; }
+.logo-title span { color:var(--text3); font-weight:300; }
+
+.status-badge {
+  display:inline-flex; align-items:center; gap:6px;
+  font-family:var(--mono); font-size:10px; padding:6px 11px;
+  border-radius:20px; border:1px solid var(--border2);
+  background:rgba(255,253,248,0.82); color:var(--text2);
+  transition:all .3s; letter-spacing:.03em; flex-shrink:0;
+}
+.status-badge.ready  { border-color:var(--jade);  background:var(--jade-dim);  color:var(--jade);  }
+.status-badge.loading{ border-color:var(--amber); background:var(--amber-dim); color:var(--amber); }
+.status-badge.error  { border-color:var(--red);   background:var(--red-dim);   color:var(--red);   }
+.status-dot { width:5px; height:5px; border-radius:50%; background:currentColor; flex-shrink:0; }
+.status-dot.pulse { animation:blink 1.4s ease-in-out infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+@keyframes none-anim { }
+
+/* Dropzone */
+.lp-drop { padding: .75rem 1.25rem; flex-shrink: 0; }
+.dropzone {
+  position:relative; border:1px dashed var(--border3); border-radius:16px;
+  padding:1.25rem 1rem; text-align:center; cursor:pointer;
+  background:linear-gradient(160deg,rgba(255,255,255,0.6),rgba(249,243,232,0.8));
+  transition:border-color .2s, background .2s, transform .2s;
+  overflow:hidden;
+}
+.dropzone::before {
+  content:''; position:absolute; inset:0;
+  background:radial-gradient(ellipse 80% 60% at 50% 0%, rgba(21,122,98,0.07) 0%, transparent 70%);
+  pointer-events:none;
+}
+.dropzone:hover, .dropzone.drag-over {
+  border-color:var(--jade); border-style:solid;
+  background:rgba(21,122,98,0.04); transform:translateY(-1px);
+}
+.dropzone input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+.dz-icon {
+  width:38px; height:38px; margin:0 auto 10px;
+  border:1px solid var(--border2); border-radius:12px;
+  display:flex; align-items:center; justify-content:center;
+  background:linear-gradient(180deg,#fffdfa,#f1e5d2);
+}
+.dz-icon svg { width:18px; height:18px; stroke:var(--text2); fill:none; stroke-width:1.5; }
+.dz-title { font-size:13.5px; font-weight:600; color:var(--text); margin-bottom:3px; }
+.dz-sub   { font-size:11.5px; color:var(--text3); }
+.dz-sub strong { color:var(--text2); font-weight:600; }
+
+/* Queue header */
+.lp-queue-head {
+  padding: .5rem 1.25rem; flex-shrink:0;
+  display:flex; align-items:center; gap:8px;
+  border-bottom:1px solid var(--border);
+}
+.lp-queue-count {
+  font-family:var(--mono); font-size:10.5px; color:var(--text3);
+  white-space:nowrap; flex-shrink:0;
+}
+.lp-search-wrap {
+  flex:1; position:relative;
+}
+.lp-search-icon {
+  position:absolute; left:8px; top:50%; transform:translateY(-50%);
+  width:13px; height:13px; stroke:var(--text3); fill:none; stroke-width:2;
+  pointer-events:none;
+}
+.lp-search {
+  width:100%; padding:5px 8px 5px 26px;
+  font-family:var(--sans); font-size:11.5px; color:var(--text);
+  border:1px solid var(--border2); border-radius:8px;
+  background:rgba(255,255,255,0.7); outline:none;
+  transition:border-color .15s;
+}
+.lp-search:focus { border-color:var(--jade); }
+.lp-search::placeholder { color:var(--text3); }
+
+/* File queue */
+.lp-queue {
+  flex: 1; overflow-y: auto; padding: .5rem 1.25rem;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.lp-queue::-webkit-scrollbar { width:3px; }
+.lp-queue::-webkit-scrollbar-thumb { background:#d4c0a6; border-radius:2px; }
+.lp-queue::-webkit-scrollbar-track { background:transparent; }
+
+.lp-empty {
+  flex:1; display:flex; align-items:center; justify-content:center;
+  color:var(--text3); font-size:12.5px; text-align:center; padding:1.5rem;
+  font-style:italic;
+}
+
+.fq-item {
+  display:flex; align-items:center; gap:10px; padding:10px 12px;
+  border-radius:12px; background:rgba(255,253,248,0.8);
+  border:1px solid var(--border);
+  cursor:pointer; transition:all .18s; flex-shrink:0;
+}
+.fq-item:hover { border-color:var(--border3); background:rgba(255,255,255,0.95); }
+.fq-item.selected { border-color:var(--jade)!important; background:var(--jade-dim)!important; }
+.fq-item.active { border-color:var(--jade)!important; background:var(--jade-dim)!important; }
+.fq-check {
+  width:18px; height:18px; border-radius:5px; flex-shrink:0;
+  border:1.5px solid var(--border3); background:rgba(255,255,255,0.8);
+  display:flex; align-items:center; justify-content:center;
+  font-size:11px; color:transparent; transition:all .15s;
+}
+.fq-item.selected .fq-check { border-color:var(--jade); background:var(--jade-dim); color:var(--jade); }
+.fq-item.done .fq-check { border-color:var(--jade); background:var(--jade-dim); color:var(--jade); }
+
+.fq-icon {
+  width:28px; height:28px; border-radius:8px; flex-shrink:0;
+  background:linear-gradient(180deg,#f1e8d9,#e6d7c0);
+  border:1px solid var(--border2);
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--mono); font-size:8.5px; color:var(--text3); letter-spacing:.04em;
+}
+.fq-info { flex:1; min-width:0; }
+.fq-name { font-size:12.5px; font-weight:500; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fq-meta { font-family:var(--mono); font-size:10px; color:var(--text3); margin-top:1px; }
+
+.fq-badge {
+  padding:2px 7px; border-radius:999px; font-family:var(--mono); font-size:9.5px;
+  border:1px solid var(--border); flex-shrink:0;
+}
+.fq-badge.new  { color:var(--amber); background:var(--amber-dim); border-color:rgba(181,107,23,.2); }
+.fq-badge.done { color:var(--jade);  background:var(--jade-dim);  border-color:rgba(21,122,98,.2); }
+.fq-badge.proc { color:var(--amber); background:var(--amber-dim); border-color:rgba(181,107,23,.2); }
+.fq-badge.selected { color:var(--jade); background:var(--jade-dim); border-color:rgba(21,122,98,.2); }
+
+.fq-rm {
+  width:22px; height:22px; border:none; background:none; cursor:pointer;
+  color:var(--text3); display:flex; align-items:center; justify-content:center;
+  border-radius:5px; font-size:15px; flex-shrink:0; padding:0; box-shadow:none;
+  transition:background .15s, color .15s;
+}
+.fq-rm:hover { background:var(--red-dim); color:var(--red); transform:none; }
+
+/* Left panel footer */
+.lp-foot {
+  padding: .75rem 1.25rem 1rem;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex; flex-direction: column; gap: 8px;
+}
+
+.run-bar { display:flex; gap:8px; }
+
+/* Progress */
+.prog-wrap { animation:fadeUp .25s ease; }
+@keyframes fadeUp { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+.prog-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+.prog-label { font-size:11.5px; font-weight:500; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:320px; }
+.prog-count { font-family:var(--mono); font-size:11px; color:var(--jade); flex-shrink:0; }
+.prog-track { height:5px; border-radius:999px; background:rgba(114,91,55,.12); overflow:hidden; margin-bottom:8px; }
+.prog-fill {
+  height:100%; width:0%; border-radius:999px;
+  background:linear-gradient(90deg,#1e9478,var(--jade));
+  transition:width .4s cubic-bezier(.4,0,.2,1);
+  box-shadow:0 0 10px var(--jade-glow);
+}
+.chips-row {
+  display:grid; grid-template-rows:repeat(3,auto); grid-auto-flow:column;
+  grid-auto-columns:max-content; gap:4px;
+  overflow-x:auto; overflow-y:hidden;
+  max-width:100%; padding-bottom:2px;
+}
+.chips-row::-webkit-scrollbar { height:3px; }
+.chips-row::-webkit-scrollbar-thumb { background:#d4c0a6; border-radius:2px; }
+.chips-row::-webkit-scrollbar-track { background:transparent; }
+.chip {
+  display:inline-flex; align-items:center; gap:4px; padding:3px 8px;
+  border-radius:20px; font-size:10.5px; font-family:var(--mono);
+  border:1px solid var(--border); background:#fffaf2; color:var(--text3); transition:all .2s;
+}
+.chip.run { border-color:var(--amber); background:var(--amber-dim); color:var(--amber); }
+.chip.ok  { border-color:var(--jade);  background:var(--jade-dim);  color:var(--jade);  }
+.chip.err { border-color:var(--red);   background:var(--red-dim);   color:var(--red);   }
+.chip-t { font-size:9.5px; opacity:.7; }
+
+/* Stats mini */
+.stats-mini { display:grid; grid-template-columns:repeat(4,1fr); gap:5px; }
+.stat-mini {
+  padding:8px 10px; border-radius:10px;
+  background:rgba(255,253,248,0.8); border:1px solid var(--border);
+  text-align:center;
+}
+.stat-mini-v { font-family:var(--mono); font-size:15px; font-weight:500; color:var(--text); line-height:1; }
+.stat-mini-l { font-size:9px; color:var(--text3); text-transform:uppercase; letter-spacing:.07em; margin-top:2px; }
+
+/* Buttons */
+button {
+  padding:9px 16px; font-family:var(--sans); font-size:12.5px; font-weight:500;
+  border:1px solid var(--border2); border-radius:10px;
+  background:rgba(255,253,248,0.9); color:var(--text2);
+  cursor:pointer; transition:all .16s; letter-spacing:.01em;
+  box-shadow:0 4px 12px rgba(110,88,54,.05);
+}
+button:hover { background:#fffaf1; color:var(--text); border-color:var(--border3); transform:translateY(-1px); }
+button:active { transform:scale(.97); }
+button:disabled { opacity:.3; cursor:not-allowed; transform:none; }
+button.cta {
+  background:linear-gradient(135deg,#1d8d73,var(--jade));
+  color:#f5f1e8; border-color:transparent; font-weight:600;
+  flex:1; box-shadow:0 10px 24px var(--jade-glow);
+}
+button.cta:hover { opacity:.93; }
+
+/* ══════════════════════════════════════
+   RIGHT PANEL
+══════════════════════════════════════ */
+.right-panel {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column;
+  background: linear-gradient(180deg, rgba(255,253,248,0.88) 0%, rgba(247,240,229,0.92) 100%);
+  border: 1px solid rgba(255,255,255,0.65);
+  border-radius: 22px;
+  box-shadow: 0 20px 50px rgba(110,88,54,0.09);
+  overflow: hidden;
+}
+
+/* Empty state */
+.rp-empty {
+  flex:1; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:16px;
+  color:var(--text3); padding:2rem;
+  animation:fadeUp .3s ease;
+}
+.rp-empty-icon {
+  width:72px; height:72px; border-radius:22px;
+  border:1px solid var(--border2);
+  background:linear-gradient(180deg,rgba(255,255,255,0.7),rgba(241,232,217,0.8));
+  display:flex; align-items:center; justify-content:center;
+  box-shadow:0 10px 28px rgba(110,88,54,0.07);
+}
+.rp-empty-icon svg { width:28px; height:28px; stroke:var(--text3); fill:none; stroke-width:1.4; }
+.rp-empty-title { font-size:16px; font-weight:500; color:var(--text2); letter-spacing:-.02em; }
+.rp-empty-sub   { font-size:13px; color:var(--text3); text-align:center; max-width:280px; line-height:1.6; }
+
+/* Viewer */
+.rp-viewer { flex:1; display:none; flex-direction:column; overflow:hidden; animation:fadeUp .25s ease; }
+.rp-viewer.active { display:flex; }
+
+/* Viewer header */
+.rv-head {
+  padding: .9rem 1.5rem .75rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex; align-items: center; gap: 12px;
+}
+.rv-file-icon {
+  width:34px; height:34px; flex-shrink:0; border-radius:10px;
+  background:linear-gradient(180deg,#f1e8d9,#e6d7c0);
+  border:1px solid var(--border2);
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--mono); font-size:9px; color:var(--text3); letter-spacing:.04em;
+}
+.rv-file-info { flex:1; min-width:0; }
+.rv-filename { font-size:14px; font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rv-filemeta { font-family:var(--mono); font-size:10.5px; color:var(--text3); margin-top:1px; }
+.rv-head-acts { display:flex; gap:6px; flex-shrink:0; }
+
+/* Page navigation bar */
+.rv-nav {
+  padding: .65rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex; align-items: center; gap: 12px;
+  background: rgba(255,255,255,0.4);
+}
+.rv-nav-pages { display:flex; align-items:center; gap:6px; }
+.rv-page-btn {
+  width:30px; height:30px; padding:0;
+  display:flex; align-items:center; justify-content:center;
+  border-radius:8px; font-size:14px; flex-shrink:0;
+  box-shadow:none;
+}
+.rv-page-btn:hover:not(:disabled) { transform:translateY(-1px); }
+.rv-page-label {
+  font-family:var(--mono); font-size:12px; color:var(--text2);
+  min-width:80px; text-align:center; white-space:nowrap;
+}
+.rv-page-time { font-family:var(--mono); font-size:11px; color:var(--jade); }
+
+/* Page jump input */
+.rv-page-jump {
+  width:46px; min-width:46px; max-width:60px; padding:4px 4px; text-align:center;
+  font-family:var(--mono); font-size:11px; color:var(--text);
+  border:1px solid var(--border2); border-radius:6px;
+  background:rgba(255,255,255,0.7); outline:none;
+  transition:border-color .15s, width .15s;
+  -moz-appearance:textfield;
+}
+.rv-page-jump::-webkit-outer-spin-button,
+.rv-page-jump::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+.rv-page-jump:focus { border-color:var(--jade); }
+.rv-page-jump::placeholder { color:var(--text3); }
+
+/* Page dots / thumb strip */
+.rv-thumbs {
+  flex:1; display:flex; align-items:center; gap:4px;
+  overflow-x:auto; padding:2px 0;
+}
+.rv-thumbs::-webkit-scrollbar { height:3px; }
+.rv-thumbs::-webkit-scrollbar-thumb { background:#d4c0a6; border-radius:2px; }
+.rv-thumbs::-webkit-scrollbar-track { background:transparent; }
+.rv-thumb {
+  width:28px; height:28px; flex-shrink:0; border-radius:7px;
+  border:1px solid var(--border2);
+  background:#f3eadc; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--mono); font-size:9.5px; color:var(--text3);
+  transition:all .15s;
+}
+.rv-thumb:hover   { border-color:var(--border3); background:#eee4d2; }
+.rv-thumb.active  { border-color:var(--jade); background:var(--jade-dim); color:var(--jade); font-weight:600; }
+.rv-thumb.pending { opacity:.45; cursor:default; }
+
+/* Page content */
+.rv-body { flex:1; overflow-y:auto; padding:1.5rem; }
+.rv-body::-webkit-scrollbar { width:5px; }
+.rv-body::-webkit-scrollbar-track { background:transparent; }
+.rv-body::-webkit-scrollbar-thumb { background:#d4c0a6; border-radius:3px; }
+
+.rv-text {
+  font-family:var(--sans); font-size:14.5px; line-height:1.9;
+  color:var(--text2); word-break:break-word;
+  min-height:100%;
+}
+.rv-text.placeholder { color:var(--text3); font-style:italic; font-size:13px; }
+.rv-text > *:first-child { margin-top:0; }
+.rv-text > *:last-child { margin-bottom:0; }
+.rv-text h1, .rv-text h2, .rv-text h3, .rv-text h4, .rv-text h5, .rv-text h6 {
+  color:var(--text); line-height:1.35; margin:1.1em 0 .45em;
+  letter-spacing:-.02em;
+}
+.rv-text h1 { font-size:1.7em; }
+.rv-text h2 { font-size:1.45em; }
+.rv-text h3 { font-size:1.22em; }
+.rv-text p, .rv-text ul, .rv-text ol, .rv-text blockquote, .rv-text table, .rv-text pre, .rv-text hr {
+  margin:.8em 0;
+}
+.rv-text ul, .rv-text ol { padding-left:1.5rem; }
+.rv-text li + li { margin-top:.3rem; }
+.rv-text code {
+  font-family:var(--mono); font-size:.92em;
+  background:rgba(114,91,55,.08); border:1px solid rgba(114,91,55,.09);
+  border-radius:6px; padding:.1em .35em;
+}
+.rv-text pre {
+  overflow:auto; padding:1rem 1.1rem; border-radius:14px;
+  background:rgba(47,38,27,.95); color:#f9f2e5;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+.rv-text pre code {
+  background:transparent; border:none; border-radius:0; padding:0; color:inherit;
+}
+.rv-text table {
+  width:100%; border-collapse:collapse; overflow:hidden;
+  border:1px solid var(--border2); border-radius:14px;
+  background:rgba(255,253,248,.86);
+}
+.rv-text th, .rv-text td {
+  padding:.7rem .8rem; text-align:left; vertical-align:top;
+  border-bottom:1px solid var(--border);
+  border-right:1px solid var(--border);
+}
+.rv-text th:last-child, .rv-text td:last-child { border-right:none; }
+.rv-text tr:last-child td { border-bottom:none; }
+.rv-text th {
+  background:rgba(21,122,98,.08); color:var(--text);
+  font-weight:600;
+}
+.rv-text blockquote {
+  margin-left:0; padding:.25rem 0 .25rem 1rem;
+  border-left:3px solid rgba(21,122,98,.35); color:var(--text2);
+}
+.rv-text a { color:var(--jade); text-decoration:none; border-bottom:1px solid rgba(21,122,98,.25); }
+.rv-text a:hover { border-bottom-color:var(--jade); }
+.rv-text hr {
+  border:none; height:1px; background:linear-gradient(90deg, transparent, var(--border3), transparent);
+}
+.rv-loading {
+  display:flex; align-items:center; gap:10px;
+  color:var(--text3); font-size:13px; padding:2rem 0;
+}
+.rv-loading-dot {
+  width:6px; height:6px; border-radius:50%; background:var(--amber);
+  animation:blink 1s ease-in-out infinite;
+}
+.rv-loading-dot:nth-child(2) { animation-delay:.2s; }
+.rv-loading-dot:nth-child(3) { animation-delay:.4s; }
+
+/* Footer */
+.rv-foot {
+  padding: .75rem 1.5rem;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,0.35);
+}
+.rv-foot-left { flex:1; font-family:var(--mono); font-size:10.5px; color:var(--text3); }
+
+/* Toast */
+.toast {
+  position:fixed; top:24px; left:50%; transform:translateX(-50%) translateY(-10px);
+  background:rgba(47,38,27,.95); border:1px solid rgba(255,255,255,.1); color:#fff8ef;
+  padding:9px 14px; border-radius:9px; font-size:12.5px;
+  opacity:0; transition:all .2s;
+  z-index:999; pointer-events:none; box-shadow:0 6px 28px rgba(0,0,0,.35);
+}
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* Scrollbar global */
+*::-webkit-scrollbar { width:4px; height:4px; }
+*::-webkit-scrollbar-track { background:transparent; }
+*::-webkit-scrollbar-thumb { background:#cebfa8; border-radius:3px; }
+
+@media (max-width:768px) {
+  body { overflow:auto; }
+  .app { flex-direction:column; height:auto; padding:.75rem; gap:.75rem; }
+  .left-panel { width:100%; }
+  .right-panel { min-height:60vh; }
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ══ LEFT PANEL ══ -->
+  <div class="left-panel">
+
+    <div class="lp-head">
+      <div>
+        <div class="logo-eyebrow">Hệ thống OCR</div>
+        <div class="logo-title">VKS <span>/ Cáo trạng</span></div>
+      </div>
+      <div class="status-badge" id="status-badge">
+        <div class="status-dot pulse" id="status-dot"></div>
+        <span id="status-text">Kết nối…</span>
+      </div>
+    </div>
+
+    <div class="lp-drop">
+      <div class="dropzone" id="dropzone">
+        <input type="file" id="file-input" accept=".pdf,image/*" multiple />
+        <div class="dz-icon">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+        </div>
+        <div class="dz-title">Kéo thả file vào đây</div>
+        <div class="dz-sub"><strong>PDF, PNG, JPG, TIFF</strong> · Nhiều file cùng lúc</div>
+      </div>
+    </div>
+
+    <div class="lp-queue-head">
+      <div class="lp-queue-count" id="lp-queue-count">0 file</div>
+      <div class="lp-search-wrap">
+        <svg class="lp-search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" class="lp-search" id="lp-search" placeholder="Tìm file…" oninput="renderQueue()" />
+      </div>
+    </div>
+    <div class="lp-queue" id="lp-queue">
+      <div class="lp-empty" id="lp-empty">Chưa có file nào</div>
+    </div>
+
+    <div class="lp-foot" id="lp-foot">
+      <div class="run-bar" id="run-bar" style="display:none">
+        <button type="button" onclick="selectAll(event)">Chọn tất cả</button>
+        <button type="button" onclick="deselectAll(event)">Bỏ chọn</button>
+        <button type="button" onclick="clearFiles(event)">Xoá tất cả</button>
+        <button type="button" class="cta" id="run-btn" onclick="runOCR(event)">Chạy OCR</button>
+      </div>
+      <div id="prog-wrap" style="display:none" class="prog-wrap">
+        <div class="prog-head">
+          <div class="prog-label" id="prog-label">Đang xử lý…</div>
+          <div class="prog-count" id="prog-count">0 / 0</div>
+        </div>
+        <div class="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
+        <div class="chips-row" id="chips-row"></div>
+      </div>
+      <div id="stats-mini" style="display:none" class="stats-mini"></div>
+    </div>
+
+  </div><!-- /left-panel -->
+
+
+  <!-- ══ RIGHT PANEL ══ -->
+  <div class="right-panel">
+
+    <!-- Empty state -->
+    <div class="rp-empty" id="rp-empty">
+      <div class="rp-empty-icon">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
+      </div>
+      <div class="rp-empty-title">Chưa có kết quả</div>
+      <div class="rp-empty-sub">OCR xong một file rồi click vào tên file bên trái để xem nội dung tại đây</div>
+    </div>
+
+    <!-- Viewer -->
+    <div class="rp-viewer" id="rp-viewer">
+
+      <div class="rv-head">
+        <div class="rv-file-icon" id="rv-file-icon">PDF</div>
+        <div class="rv-file-info">
+          <div class="rv-filename" id="rv-filename">—</div>
+          <div class="rv-filemeta" id="rv-filemeta"></div>
+        </div>
+        <div class="rv-head-acts">
+          <button type="button" onclick="copyPage(event)">Sao chép trang</button>
+          <button type="button" onclick="copyAll(event)">Sao chép tất cả</button>
+          <button type="button" onclick="downloadTex(event)">Tải .tex</button>
+          <button type="button" onclick="downloadPdf(event)">Tải PDF</button>
+        </div>
+      </div>
+
+      <div class="rv-nav">
+        <div class="rv-nav-pages">
+          <button type="button" class="rv-page-btn" id="rv-prev" onclick="prevPage()" title="Trang trước">‹</button>
+          <div class="rv-page-label" id="rv-page-label">— / —</div>
+          <button type="button" class="rv-page-btn" id="rv-next" onclick="nextPage()" title="Trang sau">›</button>
+        </div>
+        <div class="rv-page-time" id="rv-page-time"></div>
+        <input type="number" class="rv-page-jump" id="rv-page-jump" placeholder="Tìm" min="1" title="Nhập số trang để tìm kiếm" />
+        <div class="rv-thumbs" id="rv-thumbs"></div>
+      </div>
+
+      <div class="rv-body">
+        <div class="rv-text placeholder" id="rv-text">Chọn trang để xem nội dung…</div>
+      </div>
+
+      <div class="rv-foot">
+        <div class="rv-foot-left" id="rv-foot-left"></div>
+      </div>
+
+    </div><!-- /rp-viewer -->
+
+  </div><!-- /right-panel -->
+
+</div><!-- /app -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+const UI_DEFAULT_OCR_API = 'https://vks-hvks-ocr.loca.lt';
+const UI_DEFAULT_LATEX_API = 'https://vks-hvks-ocr.loca.lt';
+const urlParams = new URLSearchParams(window.location.search);
+const queryApi = (urlParams.get('api') || '').trim().replace(/\/+$/,'');
+const queryOcrApi = (urlParams.get('ocr_api') || '').trim().replace(/\/+$/,'');
+const queryLatexApi = (urlParams.get('latex_api') || '').trim().replace(/\/+$/,'');
+const storedApi = localStorage.getItem('hvks_api_base') || '';
+const storedOcrApi = localStorage.getItem('hvks_ocr_api') || '';
+const storedLatexApi = localStorage.getItem('hvks_latex_api') || '';
+const sharedApi = queryApi || (storedApi || '').trim().replace(/\/+$/,'');
+const OCR_API = queryOcrApi || queryApi || (storedOcrApi || '').trim().replace(/\/+$/,'') || sharedApi || UI_DEFAULT_OCR_API;
+const LATEX_API = queryLatexApi || queryApi || (storedLatexApi || '').trim().replace(/\/+$/,'') || sharedApi || UI_DEFAULT_LATEX_API;
+if (queryApi) {
+  localStorage.setItem('hvks_api_base', queryApi);
+  localStorage.removeItem('hvks_ocr_api');
+  localStorage.removeItem('hvks_latex_api');
+}
+if (queryOcrApi) localStorage.setItem('hvks_ocr_api', OCR_API);
+if (queryLatexApi) localStorage.setItem('hvks_latex_api', LATEX_API);
+const $ = id => document.getElementById(id);
+
+let files   = [];    // File objects
+let results = {};    // fileKey → { filename, pages, total_time_s, totalPages }
+let timers  = {};
+let viewerKey  = null;   // fileKey currently shown in right panel
+let viewerPage = 1;
+
+// ── Health ─────────────────────────────────────────────────────────────────
+let healthPoll;
+function buildApiUrl(base, path){
+  return base + path;
+}
+function buildApiHeaders(base, extra = {}){
+  const headers = { ...extra };
+  try {
+    const host = new URL(base).hostname;
+    if (host.endsWith('.loca.lt')) headers['bypass-tunnel-reminder'] = 'true';
+  } catch {}
+  return headers;
+}
+function setStatus(state, label) {
+  const b = $('status-badge'), d = $('status-dot');
+  b.className = 'status-badge ' + state;
+  d.className = 'status-dot' + (state==='loading'?' pulse':'');
+  $('status-text').textContent = label;
+}
+let latexReady = false;
+let pdfReady = false;
+async function pingHealth(url){
+  try {
+    const r = await fetch(buildApiUrl(url,'/health'),{
+      headers: buildApiHeaders(url),
+      signal: AbortSignal.timeout(6000)
+    });
+    return await r.json();
+  } catch { return null; }
+}
+async function checkHealth() {
+  const [ocr, latex] = await Promise.all([pingHealth(OCR_API), pingHealth(LATEX_API)]);
+  const ocrOk   = ocr && ocr.vllm==='ready';
+  const latexOk = latex && latex.vllm==='ready';
+  const pdfOk   = latexOk && latex.xelatex;
+  latexReady = !!latexOk;
+  pdfReady   = !!pdfOk;
+
+  if (ocr===null && latex===null) { setStatus('error','Không kết nối được'); return; }
+  if (ocrOk && pdfOk) { setStatus('ready','OCR + LaTeX/PDF sẵn sàng'); clearInterval(healthPoll); return; }
+  if (ocrOk && latexOk && !pdfOk) { setStatus('loading','OCR + LaTeX ok · thiếu xelatex để xuất PDF'); return; }
+  if (ocrOk && !latexOk) { setStatus('loading','OCR ok · LaTeX '+(latex?'đang load':'lỗi')); return; }
+  if (!ocrOk && latexOk) {
+    setStatus('loading', pdfOk ? 'LaTeX/PDF ok · OCR '+(ocr?'đang load':'lỗi') : 'LaTeX ok · PDF chưa sẵn · OCR '+(ocr?'đang load':'lỗi'));
+    return;
+  }
+  setStatus('loading','Model đang load…');
+}
+setStatus('loading','Đang kết nối…');
+checkHealth();
+healthPoll = setInterval(checkHealth, 8000);
+
+// ── File management ────────────────────────────────────────────────────────
+const dz=$('dropzone'), fi=$('file-input');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag-over');});
+dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag-over');addFiles([...e.dataTransfer.files]);});
+fi.addEventListener('change',()=>{addFiles([...fi.files]);fi.value='';});
+
+function fileKey(f) { return f.name+'__'+f.size+'__'+(f.lastModified||0); }
+function fmtSz(b)   { return b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toFixed(1)+' MB'; }
+function ext(n)     { return (n.split('.').pop()||'').toUpperCase().slice(0,4); }
+function slug(t)    { return (t||'').replace(/[^a-zA-Z0-9]/g,'_'); }
+
+function addFiles(nf) {
+  nf.forEach(f=>{ if(!files.find(x=>x.name===f.name&&x.size===f.size)) files.push(f); });
+  renderQueue();
+}
+
+function clearFiles(evt) {
+  evt?.preventDefault?.();
+  if(!files.length) return;
+  const hasProc=files.some(f=>f._ocrProc);
+  const msg=hasProc?'Xoá tất cả file (trừ file đang xử lý)?':'Xoá tất cả file?';
+  if(!confirm(msg)) return;
+  const procFiles=files.filter(f=>f._ocrProc);
+  const procKeys=new Set(procFiles.map(f=>fileKey(f)));
+  // Giữ lại results của file đang xử lý
+  const newResults={};
+  procKeys.forEach(k=>{ if(results[k]) newResults[k]=results[k]; });
+  files=procFiles; results=newResults;
+  if(viewerKey&&!procKeys.has(viewerKey)){ viewerKey=null; showEmptyState(); }
+  $('stats-mini').style.display='none';
+  if(!procFiles.length) $('prog-wrap').style.display='none';
+  renderQueue();
+}
+
+function removeFile(i) {
+  const f=files[i];
+  if(f._ocrProc){ toast('Không thể xoá file đang xử lý'); return; }
+  if(!confirm('Xoá file "'+f.name+'"?')) return;
+  files.splice(i,1);
+  const k=fileKey(f);
+  delete results[k];
+  if(viewerKey===k){ viewerKey=null; showEmptyState(); }
+  updateStats();
+  renderQueue();
+}
+
+function renderQueue() {
+  const q=$('lp-queue');
+  $('lp-empty').style.display=files.length?'none':'flex';
+  const runBar=$('run-bar');
+
+  // Remove old fq-items (keep lp-empty)
+  q.querySelectorAll('.fq-item').forEach(el=>el.remove());
+
+  const searchTerm=($('lp-search')?$('lp-search').value:'').toLowerCase().trim();
+  const countEl=$('lp-queue-count');
+  if(countEl) countEl.textContent=files.length+' file';
+
+  files.forEach((f,i)=>{
+    const k=fileKey(f);
+    const r=results[k];
+    const done=!!f._ocrDone;
+    const proc=!!f._ocrProc;
+    const sel=!!f._selected;
+
+    if(searchTerm && !f.name.toLowerCase().includes(searchTerm)) return;
+
+    const state = done?'done': proc?'proc': sel?'selected':'new';
+    const stateLabel = done?'đã OCR': proc?'đang xử lý': sel?'đã chọn':'chưa chọn';
+
+    const pagesInfo = r ? `${r.pages.length} trang · ${r.total_time_s.toFixed(1)}s` : fmtSz(f.size);
+
+    const div=document.createElement('div');
+    div.className='fq-item'+(done?' done':'')+(sel&&!done&&!proc?' selected':'')+(viewerKey===k?' active':'');
+    div.id='fqi-'+slug(f.name);
+    div.title=f.name;
+    div.innerHTML=`
+      <div class="fq-check">${done?'✓':sel?'✓':''}</div>
+      <div class="fq-icon">${ext(f.name)}</div>
+      <div class="fq-info">
+        <div class="fq-name">${esc(f.name)}</div>
+        <div class="fq-meta">${esc(pagesInfo)}</div>
+      </div>
+      <div class="fq-badge ${state}" id="fq-badge-${slug(f.name)}">${stateLabel}</div>
+      <button class="fq-rm" onclick="removeFile(${i});event.stopPropagation()" title="Xoá">×</button>`;
+    div.addEventListener('click',e=>{
+      if(e.target.closest('.fq-rm')) return;
+      const isRunning=files.some(f=>f._ocrProc);
+      if(isRunning){ toast('Đang OCR, vui lòng đợi xong'); return; }
+      if(done){
+        if(viewerKey===k){ viewerKey=null; showEmptyState(); renderQueue(); }
+        else openViewer(k);
+      }
+      else toggleSelect(i);
+    });
+    q.appendChild(div);
+  });
+
+  runBar.style.display=files.length?'flex':'none';
+  // Cập nhật số file đã chọn trên nút
+  const selCount=files.filter(f=>f._selected&&!f._ocrDone&&!f._ocrProc).length;
+  $('run-btn').textContent=selCount?`Chạy OCR (${selCount})`:'Chạy OCR';
+}
+
+// ── OCR ────────────────────────────────────────────────────────────────────
+function toggleSelect(i){
+  files[i]._selected=!files[i]._selected;
+  renderQueue();
+}
+function selectAll(evt){
+  evt?.preventDefault?.();
+  files.forEach(f=>{ if(!f._ocrDone&&!f._ocrProc) f._selected=true; });
+  renderQueue();
+}
+function deselectAll(evt){
+  evt?.preventDefault?.();
+  files.forEach(f=>{ if(!f._ocrProc) f._selected=false; });
+  viewerKey=null; showEmptyState();
+  renderQueue();
+}
+
+async function runOCR(evt) {
+  evt?.preventDefault?.();
+  const sb=$('status-badge');
+  if(sb.classList.contains('error')){ toast('Chưa kết nối được server'); return; }
+  const pending=files.filter(f=>f._selected&&!f._ocrDone&&!f._ocrProc);
+  if(!pending.length){ toast('Chọn file cần OCR trước'); return; }
+  $('run-btn').disabled=true;
+  try {
+    for(const f of pending) await processFile(f);
+  } finally {
+    $('run-btn').disabled=false;
+    $('prog-wrap').style.display='none';
+    updateStats();
+    renderQueue();
+  }
+}
+
+function startTimer(id) {
+  const t0=Date.now();
+  timers[id]=setInterval(()=>{
+    const el=$(id+'-t'); if(el) el.textContent=((Date.now()-t0)/1000).toFixed(1)+'s';
+  },100);
+}
+function stopTimer(id){ clearInterval(timers[id]); delete timers[id]; }
+
+async function processFile(file) {
+  file._ocrProc=true;
+  const k=fileKey(file);
+  results[k]={ filename:file.name, pages:[], total_time_s:0, totalPages:0 };
+
+  const fd=new FormData(); fd.append('file',file);
+  $('prog-wrap').style.display='block';
+  $('prog-label').textContent=file.name;
+  $('prog-count').textContent='…';
+  $('chips-row').innerHTML='';
+  $('prog-fill').style.width='0%';
+
+  // Update badge
+  const badge=$('fq-badge-'+slug(file.name));
+  if(badge){ badge.textContent='đang xử lý'; badge.className='fq-badge proc'; }
+
+  // Auto-open this file in viewer (live)
+  openViewer(k);
+
+  try {
+    const res=await fetch(buildApiUrl(OCR_API,'/ocr/stream'),{
+      method:'POST',
+      headers: buildApiHeaders(OCR_API),
+      body:fd
+    });
+    if(!res.ok){ toast('Lỗi server '+res.status); return; }
+
+    const reader=res.body.getReader(), dec=new TextDecoder();
+    let buf='', total=0, doneN=0;
+
+    while(true){
+      const {done,value}=await reader.read(); if(done) break;
+      buf+=dec.decode(value,{stream:true});
+      const lines=buf.split('\n'); buf=lines.pop();
+      for(const line of lines){
+        if(!line.startsWith('data: ')) continue;
+        let ev; try{ ev=JSON.parse(line.slice(6)); } catch{ continue; }
+
+        if(ev.type==='start'){
+          total=ev.total_pages;
+          results[k].totalPages=total;
+          $('prog-count').textContent=`0 / ${total}`;
+          $('chips-row').innerHTML=Array.from({length:total},(_,i)=>
+            `<div class="chip run" id="chip-${slug(file.name)}-${i+1}">tr${i+1} <span class="chip-t" id="chip-${slug(file.name)}-${i+1}-t">0.0s</span></div>`
+          ).join('');
+          for(let p=1;p<=total;p++) startTimer(`chip-${slug(file.name)}-${p}`);
+          if(viewerKey===k) refreshViewerThumbsLive(k);
+
+        } else if(ev.type==='page'){
+          doneN++;
+          results[k].pages.push(ev);
+          results[k].pages.sort((a,b)=>a.page-b.page);
+          const cid=`chip-${slug(file.name)}-${ev.page}`;
+          stopTimer(cid);
+          const chip=$(cid);
+          if(chip){ chip.className='chip '+(ev.ok?'ok':'err'); const ct=$(cid+'-t'); if(ct) ct.textContent=ev.time_s+'s'; }
+          $('prog-fill').style.width=Math.round(doneN/total*100)+'%';
+          $('prog-count').textContent=`${doneN} / ${total}`;
+          // If viewing this file, update
+          if(viewerKey===k){
+            refreshViewerThumbsLive(k);
+            if(viewerPage===ev.page || doneN===1) showViewerPage(ev.page);
+          }
+
+        } else if(ev.type==='done'){
+          file._ocrDone=true; file._ocrProc=false; file._selected=false;
+          results[k].total_time_s=ev.total_time_s;
+          renderQueue();
+          $('prog-label').textContent=file.name+' — xong ✓';
+          if(viewerKey===k) refreshViewerHeader(k);
+
+        } else if(ev.type==='error'){ toast('Lỗi: '+ev.detail); }
+      }
+    }
+  } catch(e){
+    toast('Lỗi kết nối: '+e.message);
+    file._ocrProc=false;
+    // Dọn timer còn sót
+    Object.keys(timers).forEach(tid=>{ if(tid.startsWith('chip-'+slug(file.name))) stopTimer(tid); });
+    renderQueue();
+  }
+}
+
+// ── Viewer ─────────────────────────────────────────────────────────────────
+function showEmptyState(){
+  $('rp-empty').style.display='flex';
+  $('rp-viewer').classList.remove('active');
+}
+
+function openViewer(k){
+  viewerKey=k;
+  const r=results[k]; if(!r) return;
+
+  $('rp-empty').style.display='none';
+  $('rp-viewer').classList.add('active');
+
+  // Highlight in queue
+  document.querySelectorAll('.fq-item').forEach(el=>el.classList.remove('active'));
+  const name=r.filename;
+  const item=$('fqi-'+slug(name)); if(item) item.classList.add('active');
+
+  refreshViewerHeader(k);
+  refreshViewerThumbsLive(k);
+
+  // Go to page 1 (or first available)
+  const first=r.pages[0];
+  viewerPage=first?first.page:1;
+  showViewerPage(viewerPage);
+}
+
+function refreshViewerHeader(k){
+  const r=results[k]; if(!r) return;
+  const e=ext(r.filename);
+  $('rv-file-icon').textContent=e;
+  $('rv-filename').textContent=r.filename;
+  const total=r.totalPages||r.pages.length;
+  const done=r.pages.length;
+  const time=r.total_time_s?r.total_time_s.toFixed(1)+'s':'đang xử lý…';
+  $('rv-filemeta').textContent=`${done}/${total} trang · ${time}`;
+}
+
+function refreshViewerThumbsLive(k){
+  const r=results[k]; if(!r) return;
+  const total=r.totalPages||r.pages.length;
+  const donePgs=new Set(r.pages.map(p=>p.page));
+  let html='';
+  for(let p=1;p<=total;p++){
+    const isDone=donePgs.has(p);
+    const isActive=viewerPage===p;
+    html+=`<div class="rv-thumb${isDone?'':' pending'}${isActive?' active':''}"
+      onclick="${isDone?`goPage(${p})`:'void(0)'}" title="Trang ${p}">${p}</div>`;
+  }
+  $('rv-thumbs').innerHTML=html;
+}
+
+function getPageMarkdown(pageData){
+  return pageData?.markdown ?? pageData?.text ?? '';
+}
+
+function renderMarkdown(md){
+  const src=(md||'').replace(/\r\n?/g,'\n').trim();
+  if(!src) return '<p>(không có nội dung)</p>';
+
+  const lines=src.split('\n');
+  const html=[];
+  let paragraph=[];
+  let listType=null;
+  let listItems=[];
+  let codeFence=false;
+  let codeLang='';
+  let codeLines=[];
+  let quoteLines=[];
+
+  const flushParagraph=()=>{
+    if(!paragraph.length) return;
+    html.push(`<p>${renderInline(paragraph.join('\n')).replace(/\n/g,'<br>')}</p>`);
+    paragraph=[];
+  };
+
+  const flushList=()=>{
+    if(!listType || !listItems.length) return;
+    html.push(`<${listType}>${listItems.map(item=>`<li>${renderInline(item)}</li>`).join('')}</${listType}>`);
+    listType=null;
+    listItems=[];
+  };
+
+  const flushCode=()=>{
+    if(!codeLines.length && !codeFence) return;
+    const cls=codeLang ? ` class="language-${esc(codeLang)}"` : '';
+    html.push(`<pre><code${cls}>${esc(codeLines.join('\n'))}</code></pre>`);
+    codeFence=false;
+    codeLang='';
+    codeLines=[];
+  };
+
+  const flushQuote=()=>{
+    if(!quoteLines.length) return;
+    html.push(`<blockquote>${quoteLines.map(line=>`<p>${renderInline(line).replace(/\n/g,'<br>')}</p>`).join('')}</blockquote>`);
+    quoteLines=[];
+  };
+
+  const flushAll=()=>{
+    flushParagraph();
+    flushList();
+    flushQuote();
+  };
+
+  const isTableSeparator=line=>/^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*:?-{3,}:?\s*\|?\s*$/.test(line);
+  const splitTableRow=line=>{
+    let row=line.trim();
+    if(row.startsWith('|')) row=row.slice(1);
+    if(row.endsWith('|')) row=row.slice(0,-1);
+    return row.split('|').map(cell=>cell.trim());
+  };
+  const renderTable=(headerLine, bodyLines)=>{
+    const headers=splitTableRow(headerLine);
+    const rows=bodyLines.map(splitTableRow);
+    const thead=`<thead><tr>${headers.map(cell=>`<th>${renderInline(cell)}</th>`).join('')}</tr></thead>`;
+    const tbody=rows.length
+      ? `<tbody>${rows.map(row=>`<tr>${headers.map((_,i)=>`<td>${renderInline(row[i]||'')}</td>`).join('')}</tr>`).join('')}</tbody>`
+      : '';
+    return `<table>${thead}${tbody}</table>`;
+  };
+
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i];
+
+    if(codeFence){
+      if(/^```/.test(line.trim())){
+        flushCode();
+      } else {
+        codeLines.push(line);
+      }
+      continue;
+    }
+
+    const fenceMatch=line.trim().match(/^```([\w-]+)?\s*$/);
+    if(fenceMatch){
+      flushAll();
+      codeFence=true;
+      codeLang=fenceMatch[1]||'';
+      codeLines=[];
+      continue;
+    }
+
+    if(!line.trim()){
+      flushAll();
+      continue;
+    }
+
+    if(line.trim().startsWith('>')){
+      flushParagraph();
+      flushList();
+      quoteLines.push(line.replace(/^\s*>\s?/, ''));
+      continue;
+    }
+    flushQuote();
+
+    if(i+1<lines.length && line.includes('|') && isTableSeparator(lines[i+1])){
+      flushParagraph();
+      flushList();
+      const bodyLines=[];
+      i+=2;
+      while(i<lines.length && lines[i].trim() && lines[i].includes('|')){
+        bodyLines.push(lines[i]);
+        i++;
+      }
+      i--;
+      html.push(renderTable(line, bodyLines));
+      continue;
+    }
+
+    const headingMatch=line.match(/^\s*(#{1,6})\s+(.*)$/);
+    if(headingMatch){
+      flushAll();
+      const level=headingMatch[1].length;
+      html.push(`<h${level}>${renderInline(headingMatch[2])}</h${level}>`);
+      continue;
+    }
+
+    if(/^\s*([-*_])(?:\s*\1){2,}\s*$/.test(line)){
+      flushAll();
+      html.push('<hr>');
+      continue;
+    }
+
+    const orderedMatch=line.match(/^\s*\d+\.\s+(.*)$/);
+    if(orderedMatch){
+      flushParagraph();
+      if(listType && listType!=='ol') flushList();
+      listType='ol';
+      listItems.push(orderedMatch[1]);
+      continue;
+    }
+
+    const unorderedMatch=line.match(/^\s*[-*+]\s+(.*)$/);
+    if(unorderedMatch){
+      flushParagraph();
+      if(listType && listType!=='ul') flushList();
+      listType='ul';
+      listItems.push(unorderedMatch[1]);
+      continue;
+    }
+
+    flushList();
+    paragraph.push(line);
+  }
+
+  flushAll();
+  flushCode();
+  return html.join('') || '<p>(không có nội dung)</p>';
+}
+
+function renderInline(text){
+  let out=esc(text||'');
+  const tokens=[];
+  const stash=html=>{
+    const token=`__MDTOK_${tokens.length}__`;
+    tokens.push(html);
+    return token;
+  };
+  out=out.replace(/`([^`]+)`/g, (_, inner)=>stash(`<code>${inner}</code>`));
+  out=out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,
+    (_, label, url)=>stash(`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${label}</a>`));
+  out=out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  out=out.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+  out=out.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+  out=out.replace(/_([^_\n]+)_/g, '<em>$1</em>');
+  out=out.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+  out=out.replace(/__MDTOK_(\d+)__/g, (_, idx)=>tokens[Number(idx)]||'');
+  return out;
+}
+
+function showViewerPage(p){
+  const r=results[viewerKey]; if(!r) return;
+  viewerPage=p;
+  const pageData=r.pages.find(x=>x.page===p);
+  const total=r.totalPages||r.pages.length;
+
+  $('rv-page-label').textContent=`Trang ${p} / ${total}`;
+  $('rv-prev').disabled=p<=1;
+  $('rv-next').disabled=p>=total;
+
+  const textEl=$('rv-text');
+  if(!pageData){
+    textEl.className='rv-text placeholder';
+    textEl.innerHTML=`<div class="rv-loading"><div class="rv-loading-dot"></div><div class="rv-loading-dot"></div><div class="rv-loading-dot"></div>&nbsp; Đang xử lý trang ${p}…</div>`;
+    $('rv-page-time').textContent='';
+  } else {
+    textEl.className='rv-text';
+    textEl.innerHTML=pageData.ok ? renderMarkdown(getPageMarkdown(pageData)) : `<pre><code>${esc(getPageMarkdown(pageData)||'(không có nội dung)')}</code></pre>`;
+    $('rv-page-time').textContent=pageData.time_s+'s';
+  }
+
+  $('rv-foot-left').textContent=pageData&&pageData.ok?`Trang ${p} · ${pageData.time_s}s`:
+    pageData&&!pageData.ok?'⚠ Trang này có lỗi OCR':'';
+
+  // Sync thumb highlight
+  document.querySelectorAll('.rv-thumb').forEach((el,i)=>{
+    el.classList.toggle('active', i+1===p);
+  });
+
+  // Scroll to top of content
+  document.querySelector('.rv-body').scrollTop=0;
+}
+
+function goPage(p){ viewerPage=p; showViewerPage(p); refreshViewerThumbsLive(viewerKey); }
+function prevPage(){ if(viewerPage>1) goPage(viewerPage-1); }
+function nextPage(){
+  const r=results[viewerKey]; if(!r) return;
+  const total=r.totalPages||r.pages.length;
+  if(viewerPage<total) goPage(viewerPage+1);
+}
+
+// Page jump input
+$('rv-page-jump').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){
+    const v=parseInt(e.target.value);
+    const r=results[viewerKey]; if(!r) return;
+    const total=r.totalPages||r.pages.length;
+    if(v>=1&&v<=total){ goPage(v); e.target.value=''; e.target.blur(); }
+    else toast(`Trang từ 1 đến ${total}`);
+    autoSizeJump();
+  }
+});
+$('rv-page-jump').addEventListener('input', autoSizeJump);
+function autoSizeJump(){
+  const el=$('rv-page-jump');
+  const len=el.value.length||4;
+  el.style.width=Math.max(46, len*10+16)+'px';
+}
+
+// Scroll wheel on thumbs → horizontal scroll
+$('rv-thumbs').addEventListener('wheel',e=>{
+  if(Math.abs(e.deltaY)>0){ e.preventDefault(); $('rv-thumbs').scrollLeft+=e.deltaY; }
+},{passive:false});
+
+// Scroll wheel on chips → horizontal scroll
+$('chips-row').addEventListener('wheel',e=>{
+  if(Math.abs(e.deltaY)>0){ e.preventDefault(); $('chips-row').scrollLeft+=e.deltaY; }
+},{passive:false});
+
+// Keyboard nav
+document.addEventListener('keydown',e=>{
+  if(!viewerKey) return;
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA') return;
+  if(e.key==='ArrowLeft'||e.key==='ArrowUp') { e.preventDefault(); prevPage(); }
+  if(e.key==='ArrowRight'||e.key==='ArrowDown') { e.preventDefault(); nextPage(); }
+});
+
+// ── Stats ──────────────────────────────────────────────────────────────────
+function updateStats(){
+  const all=Object.values(results).filter(r=>r.total_time_s>0);
+  if(!all.length){ $('stats-mini').style.display='none'; return; }
+  const tp=all.reduce((s,r)=>s+r.pages.length,0);
+  const tt=all.reduce((s,r)=>s+r.total_time_s,0);
+  const av=tp?(tt/tp).toFixed(1):0;
+  const er=all.flatMap(r=>r.pages).filter(p=>!p.ok).length;
+  $('stats-mini').innerHTML=`
+    <div class="stat-mini"><div class="stat-mini-v">${tp}</div><div class="stat-mini-l">Trang</div></div>
+    <div class="stat-mini"><div class="stat-mini-v">${tt.toFixed(1)}s</div><div class="stat-mini-l">Tổng</div></div>
+    <div class="stat-mini"><div class="stat-mini-v">${av}s</div><div class="stat-mini-l">TB/tr</div></div>
+    <div class="stat-mini"><div class="stat-mini-v" style="color:${er?'var(--red)':'var(--jade)'}">${er}</div><div class="stat-mini-l">Lỗi</div></div>`;
+  $('stats-mini').style.display='grid';
+}
+
+// ── Actions ────────────────────────────────────────────────────────────────
+function copyPage(evt){
+  evt?.preventDefault?.();
+  if(!viewerKey) return;
+  const r=results[viewerKey]; if(!r) return;
+  const p=r.pages.find(x=>x.page===viewerPage);
+  if(!p){ toast('Trang này chưa xử lý xong'); return; }
+  navigator.clipboard.writeText(getPageMarkdown(p)).then(()=>toast(`Đã sao chép trang ${viewerPage}`));
+}
+
+function copyAll(evt){
+  evt?.preventDefault?.();
+  const all=Object.values(results);
+  if(!all.length){ toast('Chưa có kết quả'); return; }
+  const t=all.map(r=>`=== ${r.filename} ===\n`+r.pages.map(p=>`【 Trang ${p.page} — ${p.time_s}s 】\n${getPageMarkdown(p)}`).join('\n\n---\n\n')).join('\n\n'+'='.repeat(40)+'\n\n');
+  navigator.clipboard.writeText(t).then(()=>toast('Đã sao chép tất cả'));
+}
+
+// Gộp text OCR từ nhiều trang thành đầu vào cho LLM, có đánh dấu trang
+function buildOcrInput(r){
+  return r.pages
+    .slice().sort((a,b)=>a.page-b.page)
+    .map(p=>`--- Trang ${p.page} ---\n${getPageMarkdown(p)}`)
+    .join('\n\n');
+}
+
+function wrapLatexDocument(body){
+  return `\\documentclass[12pt,a4paper]{article}
+\\usepackage{fontspec}
+\\setmainfont{DejaVu Serif}
+\\usepackage[margin=2.2cm]{geometry}
+\\usepackage{parskip}
+\\begin{document}
+${body}
+\\end{document}
+`;
+}
+
+// Fallback khi LaTeX server offline: nối text thô thành document .tex tối thiểu
+function buildRawTex(r){
+  const esc = s => (s||'').replace(/\\/g,'\\textbackslash{}')
+    .replace(/([%$&#_{}])/g,'\\$1')
+    .replace(/~/g,'\\textasciitilde{}')
+    .replace(/\^/g,'\\textasciicircum{}');
+  const body = r.pages
+    .map(p=>`\\section*{Trang ${p.page}}\n\n${esc(p.text)}`)
+    .join('\n\n\\newpage\n\n');
+  return wrapLatexDocument(body);
+}
+
+function setButtonLoading(btn, label){
+  if(!btn) return;
+  btn._origText = btn._origText || btn.textContent;
+  btn.disabled = true;
+  btn.textContent = label;
+}
+function clearButtonLoading(btn){
+  if(!btn) return;
+  btn.disabled = false;
+  if(btn._origText){ btn.textContent = btn._origText; btn._origText = null; }
+}
+
+function downloadBlob(blob, filename){
+  const a=document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  a.href=url;
+  a.download=filename;
+  a.rel='noopener';
+  a.style.display='none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{
+    URL.revokeObjectURL(url);
+    a.remove();
+  }, 2000);
+}
+
+async function downloadTex(evt){
+  evt?.preventDefault?.();
+  evt?.stopPropagation?.();
+  if(!viewerKey){ toast('Chưa mở file nào'); return; }
+  const r=results[viewerKey];
+  if(!r||!r.pages.length){ toast('Chưa có kết quả'); return; }
+  const baseName=r.filename.replace(/\.[^.]+$/,'');
+
+  // Nếu LaTeX server chưa sẵn sàng → dùng fallback thô
+  if(!latexReady){
+    toast('LaTeX server offline — dùng bản thô');
+    downloadBlob(new Blob([buildRawTex(r)],{type:'text/x-tex;charset=utf-8'}), baseName+'.tex');
+    return;
+  }
+
+  const btn = evt?.currentTarget || evt?.target || null;
+  setButtonLoading(btn, 'Đang sửa & viết LaTeX…');
+  toast('Đang gọi AI sửa chính tả + viết LaTeX…');
+  try {
+    const res = await fetch(buildApiUrl(LATEX_API,'/latex'),{
+      method:'POST',
+      headers: buildApiHeaders(LATEX_API, {'Content-Type':'application/json'}),
+      body: JSON.stringify({ text: buildOcrInput(r), max_tokens: 8192 })
+    });
+    if(!res.ok){
+      const t=await res.text();
+      toast('Lỗi '+res.status+' — tải bản thô');
+      downloadBlob(new Blob([buildRawTex(r)],{type:'text/x-tex;charset=utf-8'}), baseName+'.tex');
+      console.error(t);
+      return;
+    }
+    const data = await res.json();
+    const tex = data.full_document || wrapLatexDocument(data.latex_body || '');
+    downloadBlob(new Blob([tex],{type:'text/x-tex;charset=utf-8'}), baseName+'.tex');
+    toast(`Đã tạo .tex (${data.time_s}s)`);
+  } catch(e){
+    toast('Lỗi: '+e.message+' — tải bản thô');
+    downloadBlob(new Blob([buildRawTex(r)],{type:'text/x-tex;charset=utf-8'}), baseName+'.tex');
+  } finally {
+    clearButtonLoading(btn);
+  }
+}
+
+async function downloadPdf(evt){
+  evt?.preventDefault?.();
+  evt?.stopPropagation?.();
+  if(!viewerKey){ toast('Chưa mở file nào'); return; }
+  const r=results[viewerKey];
+  if(!r||!r.pages.length){ toast('Chưa có kết quả'); return; }
+  if(!pdfReady){ toast('PDF server chưa sẵn sàng hoặc thiếu xelatex'); return; }
+  const baseName=r.filename.replace(/\.[^.]+$/,'');
+
+  const btn = evt?.currentTarget || evt?.target || null;
+  setButtonLoading(btn, 'Đang tạo PDF… (30–120s)');
+  toast('AI đang sửa chính tả → LaTeX → compile PDF…');
+  try {
+    const res = await fetch(buildApiUrl(LATEX_API,'/pdf'),{
+      method:'POST',
+      headers: buildApiHeaders(LATEX_API, {'Content-Type':'application/json'}),
+      body: JSON.stringify({ text: buildOcrInput(r), max_tokens: 8192, engine: 'xelatex' })
+    });
+    if(!res.ok){
+      const t = await res.text();
+      toast('Lỗi tạo PDF: '+res.status);
+      console.error(t);
+      return;
+    }
+    const ct = res.headers.get('content-type')||'';
+    if(!ct.startsWith('application/pdf')){
+      const t=await res.text();
+      toast('Server không trả về PDF');
+      console.error(t);
+      return;
+    }
+    const blob = await res.blob();
+    downloadBlob(blob, baseName+'.pdf');
+    toast('Đã tải PDF');
+  } catch(e){
+    toast('Lỗi: '+e.message);
+  } finally {
+    clearButtonLoading(btn);
+  }
+}
+
+// ── Utils ──────────────────────────────────────────────────────────────────
+function esc(t){ return(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+let toastTmr;
+function toast(msg){
+  const el=$('toast'); el.textContent=msg; el.classList.add('show');
+  clearTimeout(toastTmr); toastTmr=setTimeout(()=>el.classList.remove('show'),2400);
+}
+</script>
+</body>
+</html>

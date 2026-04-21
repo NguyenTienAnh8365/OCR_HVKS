@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+python-multipart
+aiofiles
+sse-starlette
+requests
+pydantic
+pdf2image
+Pillow
+python-dotenv
