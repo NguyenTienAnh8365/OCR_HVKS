@@ -349,7 +349,7 @@ def save_extra_debug(debug_id: str, suffix: str, content: str):
         print("save_extra_debug err:", e)
 
 
-def call_llm(user_text: str, *, stream: bool = False, max_tokens: int = 8192):
+def call_llm(user_text: str, *, stream: bool = False, max_tokens: int = 16384):
     normalized_input = normalize_ocr_input(user_text)
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -365,7 +365,7 @@ def call_llm(user_text: str, *, stream: bool = False, max_tokens: int = 8192):
     )
 
 
-def generate_latex_body(user_text: str, *, max_tokens: int = 8192, retries: int = 2):
+def generate_latex_body(user_text: str, *, max_tokens: int = 16384, retries: int = 2):
     last_status = None
     last_detail = "unknown"
     last_raw = ""
@@ -379,11 +379,18 @@ def generate_latex_body(user_text: str, *, max_tokens: int = 8192, retries: int 
                 last_detail = f"vLLM error {r.status_code}: {r.text[:500]}"
             else:
                 data = r.json()
-                last_raw = data["choices"][0]["message"]["content"] or ""
+                choice = data["choices"][0]
+                last_raw = choice["message"]["content"] or ""
+                finish_reason = choice.get("finish_reason", "")
                 last_body = strip_wrapping(last_raw)
-                if last_body.strip():
+                if finish_reason == "length":
+                    print(f"[WARN] attempt={attempt} finish_reason=length — output bị cắt do max_tokens={max_tokens}. raw_len={len(last_raw)}")
+                if last_body.strip() and finish_reason != "length":
                     return last_raw, last_body
-                last_detail = f"LLM trả về rỗng sau khi strip. raw_head={last_raw[:400]!r}"
+                if finish_reason == "length" and attempt == retries:
+                    last_detail = f"Output bị cắt (finish_reason=length, max_tokens={max_tokens}). Tăng max_tokens hoặc chia nhỏ input. raw_len={len(last_raw)}"
+                elif not last_body.strip():
+                    last_detail = f"LLM trả về rỗng sau khi strip. raw_head={last_raw[:400]!r}"
         except Exception as e:
             last_detail = f"{type(e).__name__}: {e}"
 
@@ -435,7 +442,7 @@ app.add_middleware(
 
 class TextIn(BaseModel):
     text: str
-    max_tokens: Optional[int] = 8192
+    max_tokens: Optional[int] = 16384
     engine: Optional[str] = "xelatex"
 
 
@@ -474,7 +481,7 @@ def to_latex(inp: TextIn):
         raise HTTPException(400, "text rỗng")
     t0 = time.time()
     debug_id = uuid.uuid4().hex[:8]
-    raw, body = generate_latex_body(inp.text, max_tokens=inp.max_tokens or 8192)
+    raw, body = generate_latex_body(inp.text, max_tokens=inp.max_tokens or 16384)
     tex = build_full_tex(body)
     save_debug(debug_id, raw, body, tex)
     return {
@@ -493,7 +500,7 @@ def to_pdf(inp: TextIn):
     if not inp.text.strip():
         raise HTTPException(400, "text rỗng")
     debug_id = uuid.uuid4().hex[:8]
-    raw, body = generate_latex_body(inp.text, max_tokens=inp.max_tokens or 8192)
+    raw, body = generate_latex_body(inp.text, max_tokens=inp.max_tokens or 16384)
     tex_src = build_full_tex(body)
     save_debug(debug_id, raw, body, tex_src)
 
@@ -505,7 +512,7 @@ def to_pdf(inp: TextIn):
         repair_raw, repaired_body = repair_latex_body(
             body,
             compile_detail,
-            max_tokens=inp.max_tokens or 8192,
+            max_tokens=inp.max_tokens or 16384,
         )
         repaired_tex = build_full_tex(repaired_body)
         save_extra_debug(debug_id, "repair.raw.txt", repair_raw)
@@ -570,7 +577,7 @@ async def latex_stream(inp: TextIn):
         loop = asyncio.get_event_loop()
         r = await loop.run_in_executor(
             None,
-            lambda: call_llm(inp.text, stream=True, max_tokens=inp.max_tokens or 8192),
+            lambda: call_llm(inp.text, stream=True, max_tokens=inp.max_tokens or 16384),
         )
         if r.status_code != 200:
             yield {"data": json.dumps({"type": "error", "detail": f"vLLM {r.status_code}"})}
