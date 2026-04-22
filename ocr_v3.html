@@ -398,6 +398,20 @@ button.cta:hover { opacity:.93; }
   color:var(--text2); word-break:break-word;
   min-height:100%;
 }
+.rv-plain-text {
+  width:100%;
+  min-height:100%;
+  margin:0;
+  padding:0;
+  background:transparent;
+  color:var(--text);
+  font-family:var(--sans);
+  font-size:15px;
+  line-height:1.95;
+  letter-spacing:.01em;
+  white-space:pre-wrap;
+  word-break:break-word;
+}
 .rv-text.placeholder { color:var(--text3); font-style:italic; font-size:13px; }
 .rv-text > *:first-child { margin-top:0; }
 .rv-text > *:last-child { margin-bottom:0; }
@@ -613,8 +627,8 @@ button.cta:hover { opacity:.93; }
 <div class="toast" id="toast"></div>
 
 <script>
-const UI_DEFAULT_OCR_API = 'https://vks-hvks-ocr.loca.lt';
-const UI_DEFAULT_LATEX_API = 'https://vks-hvks-ocr.loca.lt';
+const UI_DEFAULT_OCR_API = 'https://ordinary-otter-10.loca.lt';
+const UI_DEFAULT_LATEX_API = 'https://ordinary-otter-10.loca.lt';
 const urlParams = new URLSearchParams(window.location.search);
 const queryApi = (urlParams.get('api') || '').trim().replace(/\/+$/,'');
 const queryOcrApi = (urlParams.get('ocr_api') || '').trim().replace(/\/+$/,'');
@@ -974,8 +988,14 @@ function refreshViewerThumbsLive(k){
   $('rv-thumbs').innerHTML=html;
 }
 
-function getPageMarkdown(pageData){
-  return pageData?.markdown ?? pageData?.text ?? '';
+function getPageText(pageData){
+  return pageData?.text ?? '';
+}
+
+function renderPageText(text){
+  const value=(text||'').replace(/\r\n?/g,'\n').trim();
+  if(!value) return '<p>(không có nội dung)</p>';
+  return `<div class="rv-plain-text">${esc(value)}</div>`;
 }
 
 function renderMarkdown(md){
@@ -1169,7 +1189,7 @@ function showViewerPage(p){
     $('rv-page-time').textContent='';
   } else {
     textEl.className='rv-text';
-    textEl.innerHTML=pageData.ok ? renderMarkdown(getPageMarkdown(pageData)) : `<pre><code>${esc(getPageMarkdown(pageData)||'(không có nội dung)')}</code></pre>`;
+    textEl.innerHTML=renderPageText(getPageText(pageData));
     $('rv-page-time').textContent=pageData.time_s+'s';
   }
 
@@ -1252,14 +1272,14 @@ function copyPage(evt){
   const r=results[viewerKey]; if(!r) return;
   const p=r.pages.find(x=>x.page===viewerPage);
   if(!p){ toast('Trang này chưa xử lý xong'); return; }
-  navigator.clipboard.writeText(getPageMarkdown(p)).then(()=>toast(`Đã sao chép trang ${viewerPage}`));
+  navigator.clipboard.writeText(getPageText(p)).then(()=>toast(`Đã sao chép trang ${viewerPage}`));
 }
 
 function copyAll(evt){
   evt?.preventDefault?.();
   const all=Object.values(results);
   if(!all.length){ toast('Chưa có kết quả'); return; }
-  const t=all.map(r=>`=== ${r.filename} ===\n`+r.pages.map(p=>`【 Trang ${p.page} — ${p.time_s}s 】\n${getPageMarkdown(p)}`).join('\n\n---\n\n')).join('\n\n'+'='.repeat(40)+'\n\n');
+  const t=all.map(r=>`=== ${r.filename} ===\n`+r.pages.map(p=>`【 Trang ${p.page} — ${p.time_s}s 】\n${getPageText(p)}`).join('\n\n---\n\n')).join('\n\n'+'='.repeat(40)+'\n\n');
   navigator.clipboard.writeText(t).then(()=>toast('Đã sao chép tất cả'));
 }
 
@@ -1267,7 +1287,7 @@ function copyAll(evt){
 function buildOcrInput(r){
   return r.pages
     .slice().sort((a,b)=>a.page-b.page)
-    .map(p=>`--- Trang ${p.page} ---\n${getPageMarkdown(p)}`)
+    .map(p=>`--- Trang ${p.page} ---\n${getPageText(p)}`)
     .join('\n\n');
 }
 

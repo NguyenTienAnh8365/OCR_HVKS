@@ -93,51 +93,58 @@ def load_images_from_bytes(data: bytes, filename: str):
 
 def build_ocr_prompt(fname: str, page_num: int, total: int) -> str:
     return (
+        "Bạn là công cụ OCR pháp lý tiếng Việt, tối ưu cho Qwen-VL để đọc văn bản scan "
+        "về cáo trạng, quyết định tố tụng, tài liệu điều tra, truy tố và xét xử.\n"
+        f"Tệp: {fname} - Trang {page_num}/{total}\n\n"
 
-    "Bạn là một công cụ nhận dạng ký tự quang học (OCR) tiếng Việt dành cho các tài liệu pháp lý và tố tụng.\n"
+        "NHIỆM VỤ:\n"
+        "- Đọc ảnh và chép lại tối đa trung thành với văn bản gốc.\n"
+        "- Ưu tiên tuyệt đối độ đúng của chữ, số, ngày tháng, số hiệu, điều luật, tên cơ quan, họ tên, địa chỉ.\n"
+        "- Giữ đúng thứ tự xuất hiện của nội dung trên trang.\n"
+        "- Chỉ được phép chép lại những gì nhìn thấy trên ảnh.\n"
+        "- Nếu không nhìn thấy hoặc không chắc chắn, KHÔNG được suy đoán.\n"
+        "- Không cần sinh Markdown. Trả về văn bản thường, sạch, dễ đọc.\n"
+        "- Không giải thích, không bình luận, không mô tả ảnh, không XML, không code fence.\n\n"
 
-    f"Tệp: {fname} - Trang {page_num}/{total}\n\n"
+        "ƯU TIÊN ĐẶC THÙ VĂN BẢN CÁO TRẠNG, TỐ TỤNG:\n"
+        "- Phần mở đầu: quốc hiệu, tiêu ngữ, tên văn bản, cơ quan ban hành.\n"
+        "- Căn cứ pháp lý: điều, khoản, điểm, bộ luật, nghị quyết, quyết định.\n"
+        "- Số hiệu văn bản, số quyết định, ngày tháng năm, địa danh.\n"
+        "- Thông tin bị can, bị cáo, bị hại, người liên quan, nhân chứng.\n"
+        "- Hành vi phạm tội: thời gian, địa điểm, diễn biến, phương thức, hậu quả.\n"
+        "- Tội danh, điều luật áp dụng, kết luận truy tố, chữ ký, đóng dấu.\n\n"
 
-    "Chỉ trả về kết quả OCR cuối cùng ở định dạng Markdown.\n"
+        "QUY TẮC OCR:\n"
+        "- Chép lại nguyên văn tối đa; không tóm tắt, không diễn giải, không viết lại theo ý hiểu.\n"
+        "- Không được tự bổ sung nội dung không có trong ảnh, kể cả khi thấy thiếu.\n"
+        "- Giữ nguyên dòng, đoạn, danh sách, câu đánh số, tiêu mục nếu nhìn thấy.\n"
+        "- Nếu thấy bảng biểu, chép lại theo dạng văn bản giữ đủ dữ liệu; không ép sang Markdown.\n"
+        "- Chuẩn hóa nhẹ các lỗi OCR rõ ràng giữa chữ và số nếu chắc chắn từ ngữ cảnh "
+        "(ví dụ O/0, I/1, l/1, 2/Z, 5/S); nếu không chắc → giữ nguyên.\n"
+        "- Thuật ngữ pháp lý phải đúng chính tả và đúng hoa/thường nếu nhìn thấy rõ.\n"
+        "- Nếu một cụm khó đọc hoặc mờ → dùng [không rõ] đúng vị trí.\n"
+        "- Nếu mất cả dòng hoặc không thể nhận dạng → dùng [mất dòng].\n"
+        "- Không suy diễn nội dung bị thiếu.\n"
+        "- Không sinh thêm tiêu đề, không thêm cấu trúc mới nếu không có trên ảnh.\n\n"
 
-    "Yêu cầu:\n"
+        "RÀNG BUỘC CHỐNG HALLUCINATION:\n"
+        "- Tuyệt đối không tạo nội dung mới ngoài những gì nhìn thấy.\n"
+        "- Không lặp lại chuỗi vô nghĩa, không sinh ký tự bất thường.\n"
+        "- Nếu nội dung ngắn hoặc thiếu, vẫn giữ nguyên, không được kéo dài.\n"
+        "- Khi không chắc chắn, ưu tiên giữ nguyên hoặc đánh dấu [không rõ], KHÔNG đoán.\n\n"
 
-    "- Không giải thích. Không chuỗi suy luận. Không sử dụng thẻ XML.\n"
-    "- Không bao bọc câu trả lời trong khung mã.\n"
-    "- Giữ nguyên cấu trúc gốc càng sát càng tốt.\n"
-    "- Chỉ sử dụng tiêu đề, danh sách, bảng và đoạn văn Markdown khi chúng khớp với bản quét.\n"
-    "- Giữ các mệnh đề được đánh số, hàng bảng, chữ ký và dấu ngắt dòng rõ ràng trên các dòng riêng biệt.\n"
-    "- Không bịa đặt tên, ngày tháng, số tiền hoặc sự kiện pháp lý.\n"
-    "- Nếu một số văn bản khó đọc, hãy suy luận một cách thận trọng và giữ cho văn bản không chắc chắn ở mức tối thiểu.\n"
-    "- Đầu ra phải chỉ ở định dạng Markdown dễ đọc.\n\n"
-
-    "Quy chuẩn Markdown:\n"
-    "- Tiêu đề: dùng #, ##, ### đúng cấp nếu văn bản gốc có tiêu đề rõ ràng.\n"
-    "- Đoạn văn: mỗi đoạn cách nhau một dòng trống.\n"
-    "- Danh sách:\n"
-    "  + Dùng '-' cho danh sách không thứ tự.\n"
-    "  + Dùng '1.', '2.', ... cho danh sách có thứ tự, giữ nguyên số gốc nếu có.\n"
-    "- Bảng:\n"
-    "  + Dùng cú pháp bảng Markdown chuẩn với '|'.\n"
-    "  + Giữ nguyên số cột, thứ tự và nội dung.\n"
-    "- Xuống dòng:\n"
-    "  + Giữ nguyên line break quan trọng (điều khoản, chữ ký, địa điểm, ngày tháng).\n"
-    "- Nhấn mạnh:\n"
-    "  + Dùng **bold** nếu văn bản gốc in đậm.\n"
-    "  + Dùng *italic* nếu văn bản gốc in nghiêng.\n"
-    "- Không thêm ký tự trang trí, không tự ý format lại nội dung.\n"
-    "- Không gộp dòng hoặc tách dòng nếu không cần thiết.\n"
-
+        "ĐẦU RA MONG MUỐN:\n"
+        "- Chỉ trả về nội dung OCR cuối cùng.\n"
+        "- Văn bản thường, xuống dòng rõ ràng, giữ bố cục logic của trang.\n"
+        "- Không thêm bất kỳ câu dẫn nhập hoặc kết luận nào.\n"
     )
-
 
 
 def build_page_result(page_num: int, value: str, elapsed: float, ok: bool):
     return {
         "page": page_num,
         "text": value,
-        "markdown": value,
-        "format": "markdown",
+        "format": "text",
         "time_s": round(elapsed, 2),
         "ok": ok,
     }
@@ -159,8 +166,12 @@ def ocr_one_page(b64: str, page_num: int, total: int, fname: str):
             response = vllm_client.chat(
                 messages,
                 max_tokens=4096,
-                temperature=0.0,
-                extra={"repetition_penalty": 1.1, "frequency_penalty": 0.3},
+                temperature=0.05,
+                extra={
+                    "top_p": 0.8,
+                    "repetition_penalty": 1.03,
+                    "frequency_penalty": 0.0,
+                },
                 timeout=300,
             )
             if response.status_code != 200:
@@ -194,7 +205,7 @@ def health():
             "vllm": "ready",
             "models": models,
             "model_name": MODEL_NAME,
-            "ocr_output_format": "markdown",
+            "ocr_output_format": "text",
             "poppler": bool(pdfinfo_path),
             "pdfinfo": pdfinfo_path,
             "poppler_path": poppler_path,
@@ -206,7 +217,7 @@ def health():
             "vllm": "unreachable",
             "detail": str(exc),
             "model_name": MODEL_NAME,
-            "ocr_output_format": "markdown",
+            "ocr_output_format": "text",
             "poppler": bool(pdfinfo_path),
             "pdfinfo": pdfinfo_path,
             "poppler_path": poppler_path,
@@ -239,7 +250,7 @@ async def ocr_sync(file: UploadFile = File(...)):
     return {
         "filename": fname,
         "total_pages": total,
-        "output_format": "markdown",
+        "output_format": "text",
         "total_time_s": round(time.time() - started_at, 2),
         "pages": results,
     }
@@ -264,7 +275,7 @@ async def ocr_stream(file: UploadFile = File(...)):
                     "type": "start",
                     "total_pages": total,
                     "filename": fname,
-                    "output_format": "markdown",
+                    "output_format": "text",
                 }
             )
         }
@@ -292,7 +303,7 @@ async def ocr_stream(file: UploadFile = File(...)):
             "data": json.dumps(
                 {
                     "type": "done",
-                    "output_format": "markdown",
+                    "output_format": "text",
                     "total_time_s": round(time.time() - started_at, 2),
                 }
             )
