@@ -39,8 +39,9 @@ LOCAL_SRC = Path(os.environ.get("LOCAL_SRC", "/content/drive/MyDrive/OCR_HVKS/lo
 MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen3.6-35B-A3B")
 VLLM_PORT = int(os.environ.get("VLLM_PORT", 8008))
 COMBINED_API_PORT = int(os.environ.get("COMBINED_API_PORT", os.environ.get("API_PORT", 8900)))
-SUBDOMAIN = os.environ.get("SUBDOMAIN", "vks-hvks-ocr")
+SUBDOMAIN = os.environ.get("SUBDOMAIN", "vks-hvks-ocr-extract")
 FIXED_URL = f"https://{SUBDOMAIN}.loca.lt"
+TUNNEL_TYPE = os.environ.get("TUNNEL_TYPE", "cloudflared").lower()  # "cloudflared" | "localtunnel"
 GPU_MEMORY_UTILIZATION = float(os.environ.get("GPU_MEMORY_UTILIZATION", "0.9"))
 MAX_MODEL_LEN = int(os.environ.get("MAX_MODEL_LEN", "100000"))
 MAX_NUM_SEQS = int(os.environ.get("MAX_NUM_SEQS", "64"))
@@ -61,6 +62,8 @@ def require_local_src():
         LOCAL_SRC / "vllm_client.py",
         LOCAL_SRC / "ocr_server.py",
         LOCAL_SRC / "latex_server.py",
+        LOCAL_SRC / "extract.py",
+        LOCAL_SRC / "extract_md",
     ]
     missing = [str(p) for p in required if not p.exists()]
     if missing:
@@ -144,6 +147,47 @@ def install_localtunnel():
     subprocess.run("npm install -g localtunnel -q", shell=True, timeout=120)
 
 
+def install_cloudflared():
+    if subprocess.run("which cloudflared", shell=True, capture_output=True).returncode == 0:
+        return
+    print("      installing cloudflared ...", flush=True)
+    subprocess.run(
+        "wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/"
+        "cloudflared-linux-amd64 -O /usr/local/bin/cloudflared && "
+        "chmod +x /usr/local/bin/cloudflared",
+        shell=True, timeout=180,
+    )
+
+
+def start_cloudflared_tunnel(**_kw):
+    """Start cloudflared quick tunnel → random URL trên trycloudflare.com."""
+    log_file = "tunnel_api.log"
+    subprocess.run("pkill -9 -f 'cloudflared tunnel' || true", shell=True, timeout=5)
+    time.sleep(2)
+    try:
+        os.remove(log_file)
+    except FileNotFoundError:
+        pass
+
+    subprocess.Popen(
+        f"cloudflared tunnel --url http://localhost:{COMBINED_API_PORT} "
+        f"--no-autoupdate > {log_file} 2>&1 &",
+        shell=True,
+    )
+
+    for _ in range(45):
+        time.sleep(1)
+        try:
+            with open(log_file, encoding="utf-8", errors="ignore") as f:
+                log = f.read()
+            m = re.search(r"https://[\w\-]+\.trycloudflare\.com", log)
+            if m:
+                return m.group(0)
+        except FileNotFoundError:
+            pass
+    return None
+
+
 def install_tex_and_fonts():
     """Cài xelatex + poppler + fonts (DejaVu) nếu thiếu. Chỉ chạy trên Linux Colab."""
     if subprocess.run("which xelatex", shell=True, capture_output=True).returncode == 0 \
@@ -160,10 +204,14 @@ def install_tex_and_fonts():
     )
 
 
-def start_tunnel():
+def start_tunnel(*, wait_lease_release_s: int = 0):
     log_file = "tunnel_api.log"
     subprocess.run("pkill -9 -f 'lt --port' || true", shell=True, timeout=5)
-    time.sleep(2)
+    if wait_lease_release_s > 0:
+        print(f"      waiting {wait_lease_release_s}s for localtunnel lease release ...", flush=True)
+        time.sleep(wait_lease_release_s)
+    else:
+        time.sleep(2)
     try:
         os.remove(log_file)
     except FileNotFoundError:
@@ -202,7 +250,7 @@ def build_app():
             if isinstance(route, APIRoute) and route.path in allowed_paths:
                 app.router.routes.append(route)
 
-    add_routes(ocr_server.app, {"/ocr", "/ocr/stream"})
+    add_routes(ocr_server.app, {"/ocr", "/ocr/stream", "/extract", "/extract/schema"})
     add_routes(latex_server.app, {"/latex", "/pdf", "/compile", "/debug/{debug_id}", "/latex/stream"})
 
     @app.get("/health")
@@ -223,6 +271,101 @@ def build_app():
 
 def run_api():
     uvicorn.run(build_app(), host="0.0.0.0", port=COMBINED_API_PORT, log_level="warning")
+
+
+def keepalive_loop(tunnel_url, reconnect_fn, *, ping_interval=240, warmup_interval=600,
+                   max_hours=24, tunnel_fail_threshold=2):
+    """Block the cell so Colab sees it as active.
+    - Ping localhost /health to confirm FastAPI up.
+    - Ping tunnel_url /health to confirm localtunnel still alive; auto-restart
+      tunnel after `tunnel_fail_threshold` consecutive failures.
+    - Send a 1-token vLLM prompt every `warmup_interval`s to keep GPU busy.
+    - Exit after `max_hours` or on KeyboardInterrupt.
+    """
+    local_health = f"http://localhost:{COMBINED_API_PORT}/health"
+    vllm_url = f"http://localhost:{VLLM_PORT}/v1/chat/completions"
+    warmup_payload = {
+        "model": MODEL_NAME,
+        "messages": [{"role": "user", "content": "ping"}],
+        "max_tokens": 1,
+        "temperature": 0.0,
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
+    tunnel_headers = {"bypass-tunnel-reminder": "true"}
+
+    print(
+        f"[keepalive] start — ping={ping_interval}s, warmup={warmup_interval}s, "
+        f"max={max_hours}h, tunnel_auto_reconnect after {tunnel_fail_threshold} fails. "
+        "Ctrl+M I để dừng.",
+        flush=True,
+    )
+    t0 = time.time()
+    last_warmup = 0.0
+    tunnel_fails = 0
+    current_tunnel = tunnel_url
+
+    try:
+        while True:
+            elapsed = time.time() - t0
+            if elapsed >= max_hours * 3600:
+                print(f"[keepalive] reached {max_hours}h, exiting.", flush=True)
+                break
+
+            try:
+                r = requests.get(local_health, timeout=10)
+                local_status = f"{r.status_code}"
+            except Exception as e:
+                local_status = f"err:{type(e).__name__}"
+
+            tunnel_status = "skip"
+            if current_tunnel:
+                try:
+                    r = requests.get(
+                        current_tunnel.rstrip("/") + "/health",
+                        headers=tunnel_headers, timeout=15,
+                    )
+                    if r.status_code == 200:
+                        tunnel_status = "200"
+                        tunnel_fails = 0
+                    else:
+                        tunnel_status = f"{r.status_code}"
+                        tunnel_fails += 1
+                except Exception as e:
+                    tunnel_status = f"err:{type(e).__name__}"
+                    tunnel_fails += 1
+
+            if tunnel_fails >= tunnel_fail_threshold:
+                print(f"[keepalive] tunnel down {tunnel_fails}x, reconnecting ...", flush=True)
+                try:
+                    new_url = reconnect_fn()
+                    if new_url:
+                        current_tunnel = new_url
+                        tunnel_fails = 0
+                        print(f"[keepalive] reconnected: {new_url}", flush=True)
+                    else:
+                        print("[keepalive] reconnect failed, will retry.", flush=True)
+                except Exception as e:
+                    print(f"[keepalive] reconnect error: {type(e).__name__}: {e}", flush=True)
+
+            now = time.time()
+            gpu_tag = ""
+            if now - last_warmup >= warmup_interval:
+                try:
+                    requests.post(vllm_url, json=warmup_payload, timeout=30)
+                    last_warmup = now
+                    gpu_tag = " gpu=warm"
+                except Exception as e:
+                    gpu_tag = f" gpu=err:{type(e).__name__}"
+
+            print(
+                f"[keepalive] t={int(elapsed)}s local={local_status} "
+                f"tunnel={tunnel_status}{gpu_tag}",
+                flush=True,
+            )
+
+            time.sleep(ping_interval)
+    except KeyboardInterrupt:
+        print("[keepalive] interrupted by user.", flush=True)
 
 
 def main():
@@ -262,39 +405,64 @@ def main():
     except Exception as e:
         print("      health failed:", e, flush=True)
 
-    print("[6/6] install localtunnel if missing ...", flush=True)
-    install_localtunnel()
+    print(f"[6/6] install tunnel client ({TUNNEL_TYPE}) if missing ...", flush=True)
+    if TUNNEL_TYPE == "cloudflared":
+        install_cloudflared()
+    else:
+        install_localtunnel()
 
-    print(f"[tunnel] expose API tunnel subdomain={SUBDOMAIN} ...", flush=True)
     url = None
-    for attempt in range(1, 4):
-        url = start_tunnel()
-        if url == FIXED_URL:
-            break
-        print(f"      attempt {attempt}/3 got {url!r}, retry ...", flush=True)
+    reconnect_fn = None
+    pw = None
 
-    if not url:
-        print(f"ERROR: cannot reserve subdomain '{SUBDOMAIN}'. Change SUBDOMAIN and try again.")
-        return
+    if TUNNEL_TYPE == "cloudflared":
+        print("[tunnel] starting cloudflared quick tunnel ...", flush=True)
+        url = start_cloudflared_tunnel()
+        reconnect_fn = start_cloudflared_tunnel
+        if not url:
+            print("ERROR: cloudflared không lấy được URL. Xem tunnel_api.log để debug.", flush=True)
+            return
+    else:
+        print(f"[tunnel] expose localtunnel subdomain={SUBDOMAIN} ...", flush=True)
+        for attempt in range(1, 6):
+            wait_s = 0 if attempt == 1 else 20 + (attempt - 2) * 10
+            url = start_tunnel(wait_lease_release_s=wait_s)
+            if url == FIXED_URL:
+                break
+            print(f"      attempt {attempt}/5 got {url!r}, retry ...", flush=True)
 
-    try:
-        pw = requests.get("https://loca.lt/mytunnelpassword", timeout=10).text.strip()
-    except Exception:
-        pw = "<fetch manually from https://loca.lt/mytunnelpassword>"
+        if not url:
+            print(f"ERROR: cannot reserve subdomain '{SUBDOMAIN}'. Change SUBDOMAIN and try again.")
+            return
+        if url != FIXED_URL:
+            print(
+                f"WARN: subdomain '{SUBDOMAIN}' không khả dụng sau 5 lần thử — dùng tạm {url}.",
+                flush=True,
+            )
+        reconnect_fn = start_tunnel
+        try:
+            pw = requests.get("https://loca.lt/mytunnelpassword", timeout=10).text.strip()
+        except Exception:
+            pw = "<fetch manually from https://loca.lt/mytunnelpassword>"
 
     print("\n" + "=" * 60)
-    print(f"API tunnel: {url}")
-    print(f"Tunnel password: {pw}")
+    print(f"API tunnel ({TUNNEL_TYPE}): {url}")
+    if pw:
+        print(f"Tunnel password: {pw}")
     print("Endpoints:")
     print(f"  GET  {url}/health")
     print(f"  POST {url}/ocr")
     print(f"  POST {url}/ocr/stream")
+    print(f"  POST {url}/extract")
+    print(f"  GET  {url}/extract/schema")
     print(f"  POST {url}/latex")
     print(f"  POST {url}/pdf")
     print(f"  POST {url}/compile")
     print(f"  POST {url}/latex/stream")
     print("=" * 60)
     print(f"\nOpen local UI with: ocr_v3.html?api={url}")
+
+    keepalive_loop(url, reconnect_fn)
 
 
 if __name__ == "__main__":

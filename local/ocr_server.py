@@ -18,6 +18,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from config import DPI, MAX_WORKERS, MODEL_NAME, OCR_PORT, POPPLER_PATH
 import vllm_client
+from extract import router as extract_router
 
 
 CODE_FENCE_RE = re.compile(
@@ -34,6 +35,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(extract_router)
 
 
 def encode_pil(img: Image.Image) -> str:
@@ -165,7 +167,7 @@ def ocr_one_page(b64: str, page_num: int, total: int, fname: str):
         try:
             response = vllm_client.chat(
                 messages,
-                max_tokens=4096,
+                max_tokens=8192,
                 temperature=0.05,
                 extra={
                     "top_p": 0.8,

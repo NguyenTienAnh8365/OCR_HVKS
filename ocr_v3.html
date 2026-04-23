@@ -43,21 +43,66 @@ body::before {
 /* ── App shell ── */
 .app {
   position: relative; z-index: 1;
-  display: flex; height: 100vh;
-  max-width: 1440px; margin: 0 auto;
-  padding: 1rem;
-  gap: 1rem;
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  margin: 0;
+  padding: .5rem;
+  gap: .5rem;
+  overflow: hidden;
+  box-sizing: border-box;
+  --splitter-size: 12px;
+}
+.panel-shell { min-width: 0; min-height: 0; }
+.panel-splitter {
+  position: relative;
+  flex: 0 0 var(--splitter-size);
+  min-width: var(--splitter-size);
+  border-radius: 999px;
+  cursor: col-resize;
+  touch-action: none;
+  background: linear-gradient(180deg, rgba(255,255,255,0.45), rgba(214,192,164,0.3));
+  border: 1px solid rgba(114,91,55,0.08);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.22);
+  transition: background .18s, border-color .18s, box-shadow .18s;
+}
+.panel-splitter::before {
+  content:'';
+  position:absolute;
+  top:50%;
+  left:50%;
+  width:4px;
+  height:54px;
+  border-radius:999px;
+  transform:translate(-50%, -50%);
+  background:
+    radial-gradient(circle at 50% 10%, rgba(103,91,74,.42) 0 1px, transparent 1.5px) center 4px / 4px 12px repeat-y;
+  opacity:.9;
+}
+.panel-splitter:hover,
+.panel-splitter:focus-visible {
+  outline:none;
+  border-color: rgba(21,122,98,0.22);
+  background: linear-gradient(180deg, rgba(255,255,255,0.8), rgba(21,122,98,0.12));
+  box-shadow: 0 0 0 2px rgba(21,122,98,0.08);
+}
+body.is-resizing,
+body.is-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 /* ══════════════════════════════════════
    LEFT PANEL
 ══════════════════════════════════════ */
 .left-panel {
-  width: 500px; flex-shrink: 0;
+  flex: 0 0 clamp(360px, 24vw, 500px);
   display: flex; flex-direction: column;
   background: linear-gradient(180deg, rgba(255,253,248,0.96) 0%, rgba(249,243,232,0.98) 100%);
   border: 1px solid rgba(255,255,255,0.7);
-  border-radius: 22px;
+  border-radius: 18px;
   box-shadow: 0 20px 50px rgba(110,88,54,0.12);
   overflow: hidden;
 }
@@ -168,16 +213,21 @@ body::before {
   cursor:pointer; transition:all .18s; flex-shrink:0;
 }
 .fq-item:hover { border-color:var(--border3); background:rgba(255,255,255,0.95); }
-.fq-item.selected { border-color:var(--jade)!important; background:var(--jade-dim)!important; }
+.fq-item.selected { border-color:var(--border3)!important; background:rgba(241,232,217,0.7)!important; }
 .fq-item.active { border-color:var(--jade)!important; background:var(--jade-dim)!important; }
+.fq-item.error { border-color:rgba(196,94,85,.32)!important; background:var(--red-dim)!important; }
 .fq-check {
   width:18px; height:18px; border-radius:5px; flex-shrink:0;
   border:1.5px solid var(--border3); background:rgba(255,255,255,0.8);
   display:flex; align-items:center; justify-content:center;
   font-size:11px; color:transparent; transition:all .15s;
+  padding:0; box-shadow:none; cursor:pointer;
 }
-.fq-item.selected .fq-check { border-color:var(--jade); background:var(--jade-dim); color:var(--jade); }
+.fq-check:hover { transform:none; }
+.fq-check.static { cursor:default; pointer-events:none; }
+.fq-item.selected .fq-check { border-color:var(--amber); background:var(--amber-dim); color:var(--amber); }
 .fq-item.done .fq-check { border-color:var(--jade); background:var(--jade-dim); color:var(--jade); }
+.fq-item.error.selected { border-color:var(--amber)!important; box-shadow:inset 0 0 0 1px rgba(181,107,23,.22); }
 
 .fq-icon {
   width:28px; height:28px; border-radius:8px; flex-shrink:0;
@@ -197,7 +247,8 @@ body::before {
 .fq-badge.new  { color:var(--amber); background:var(--amber-dim); border-color:rgba(181,107,23,.2); }
 .fq-badge.done { color:var(--jade);  background:var(--jade-dim);  border-color:rgba(21,122,98,.2); }
 .fq-badge.proc { color:var(--amber); background:var(--amber-dim); border-color:rgba(181,107,23,.2); }
-.fq-badge.selected { color:var(--jade); background:var(--jade-dim); border-color:rgba(21,122,98,.2); }
+.fq-badge.err  { color:var(--red);   background:var(--red-dim);   border-color:rgba(196,94,85,.22); }
+.fq-badge.selected { color:var(--amber); background:var(--amber-dim); border-color:rgba(181,107,23,.2); }
 
 .fq-rm {
   width:22px; height:22px; border:none; background:none; cursor:pointer;
@@ -281,11 +332,12 @@ button.cta:hover { opacity:.93; }
    RIGHT PANEL
 ══════════════════════════════════════ */
 .right-panel {
-  flex: 1; min-width: 0;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex; flex-direction: column;
   background: linear-gradient(180deg, rgba(255,253,248,0.88) 0%, rgba(247,240,229,0.92) 100%);
   border: 1px solid rgba(255,255,255,0.65);
-  border-radius: 22px;
+  border-radius: 18px;
   box-shadow: 0 20px 50px rgba(110,88,54,0.09);
   overflow: hidden;
 }
@@ -329,7 +381,7 @@ button.cta:hover { opacity:.93; }
 .rv-file-info { flex:1; min-width:0; }
 .rv-filename { font-size:14px; font-weight:600; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .rv-filemeta { font-family:var(--mono); font-size:10.5px; color:var(--text3); margin-top:1px; }
-.rv-head-acts { display:flex; gap:6px; flex-shrink:0; }
+.rv-head-acts { display:flex; gap:6px; flex-shrink:0; flex-wrap:wrap; justify-content:flex-end; }
 
 /* Page navigation bar */
 .rv-nav {
@@ -388,7 +440,12 @@ button.cta:hover { opacity:.93; }
 .rv-thumb.pending { opacity:.45; cursor:default; }
 
 /* Page content */
-.rv-body { flex:1; overflow-y:auto; padding:1.5rem; }
+.rv-body { flex:1; min-height:0; overflow-y:auto; padding:1.5rem; }
+.rv-body.editing-mode {
+  display:flex;
+  overflow:hidden;
+  padding:1rem;
+}
 .rv-body::-webkit-scrollbar { width:5px; }
 .rv-body::-webkit-scrollbar-track { background:transparent; }
 .rv-body::-webkit-scrollbar-thumb { background:#d4c0a6; border-radius:3px; }
@@ -413,6 +470,50 @@ button.cta:hover { opacity:.93; }
   word-break:break-word;
 }
 .rv-text.placeholder { color:var(--text3); font-style:italic; font-size:13px; }
+.rv-text.editing {
+  display:flex;
+  flex:1;
+  min-height:0;
+  flex-direction:column;
+  padding:0;
+}
+.rv-edit-area {
+  width:100%;
+  flex:1 1 auto;
+  min-height:0;
+  resize:none;
+  padding:1rem; border:1px solid var(--border2);
+  border-radius:10px; font-family:var(--sans); font-size:14.5px;
+  line-height:1.85; background:#fffdf8; color:var(--text);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.6);
+  outline:none;
+  overflow:auto;
+}
+.rv-edit-area:focus { border-color:var(--jade); box-shadow:0 0 0 2px var(--jade-dim); }
+.rv-edit-bar {
+  display:flex;
+  gap:8px;
+  margin-top:10px;
+  justify-content:flex-end;
+  align-items:center;
+  flex-shrink:0;
+}
+.rv-edit-hint { flex:1; font-size:11.5px; color:var(--text3); }
+.rv-edit-save {
+  background:var(--jade); color:#fff8ef; border:1px solid var(--jade);
+  padding:7px 16px; border-radius:9px; cursor:pointer; font-weight:500; font-size:12.5px;
+}
+.rv-edit-save:hover { filter:brightness(1.05); }
+.rv-edit-cancel {
+  background:var(--s1); color:var(--text2); border:1px solid var(--border2);
+  padding:7px 14px; border-radius:9px; cursor:pointer; font-size:12.5px;
+}
+.rv-edit-cancel:hover { border-color:var(--red); color:var(--red); }
+.edited-tag {
+  font-family:var(--mono); font-size:9.5px; color:var(--amber);
+  background:var(--amber-dim); border:1px solid var(--amber);
+  padding:1px 6px; border-radius:6px; margin-left:6px;
+}
 .rv-text > *:first-child { margin-top:0; }
 .rv-text > *:last-child { margin-bottom:0; }
 .rv-text h1, .rv-text h2, .rv-text h3, .rv-text h4, .rv-text h5, .rv-text h6 {
@@ -477,6 +578,93 @@ button.cta:hover { opacity:.93; }
 .rv-loading-dot:nth-child(3) { animation-delay:.4s; }
 
 /* Footer */
+/* Extract panel (3rd column at app level) */
+.extract-panel {
+  flex: 0 0 clamp(360px, 24vw, 500px);
+  display: flex; flex-direction: column;
+  background: linear-gradient(180deg, rgba(255,253,248,0.92) 0%, rgba(247,240,229,0.96) 100%);
+  border: 1px solid rgba(255,255,255,0.7);
+  border-radius: 18px;
+  box-shadow: 0 20px 50px rgba(110,88,54,0.10);
+  overflow: hidden;
+}
+.rv-extract {
+  flex:1;
+  overflow-y:auto;
+  display:flex; flex-direction:column;
+}
+.rv-extract::-webkit-scrollbar { width:5px; }
+.rv-extract::-webkit-scrollbar-track { background:transparent; }
+.rv-extract::-webkit-scrollbar-thumb { background:#d4c0a6; border-radius:3px; }
+.rv-extract-head {
+  display:grid;
+  grid-template-columns:minmax(0, 1fr);
+  align-items:start;
+  gap:8px;
+  padding:.9rem 1.25rem .75rem;
+  border-bottom:1px solid var(--border);
+}
+.rv-extract-title {
+  min-width:0;
+  font-size:14px; font-weight:600; color:var(--text); letter-spacing:-.01em;
+}
+.rv-extract-meta  {
+  min-width:0;
+  font-family:var(--mono); font-size:10.5px; color:var(--text3);
+}
+.rv-extract-actions {
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  width:100%;
+  min-width:0;
+}
+.rv-extract-btn, .rv-extract-copy {
+  flex:1 1 110px;
+  min-width:0;
+  font-family:var(--sans); font-size:11.5px; font-weight:500;
+  padding:6px 10px; border-radius:9px; cursor:pointer;
+  transition:all .2s;
+  white-space:normal;
+  text-align:center;
+  box-sizing:border-box;
+}
+.rv-extract-btn {
+  border:1px solid var(--jade); background:var(--jade-dim); color:var(--jade);
+}
+.rv-extract-btn:hover:not(:disabled){ background:var(--jade); color:#fff8ef; }
+.rv-extract-btn:disabled{ cursor:not-allowed; opacity:.55; }
+.rv-extract-copy {
+  font-weight:400;
+  border:1px solid var(--border2); background:rgba(255,253,248,0.82); color:var(--text2);
+}
+.rv-extract-copy:hover{ border-color:var(--jade); color:var(--jade); }
+.rv-extract-group { margin-bottom:1rem; border:1px solid var(--border); border-radius:12px; overflow:hidden; background:#fffdf8; }
+.rv-extract-group-head {
+  padding:.55rem .85rem; background:rgba(21,122,98,0.06);
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:8px;
+  font-size:12.5px; font-weight:600; color:var(--text);
+}
+.rv-extract-group-head .tag {
+  font-family:var(--mono); font-size:10px; color:var(--text3); font-weight:400;
+}
+.rv-extract-group-head .tag.err { color:var(--red); }
+.rv-extract-table { width:100%; border-collapse:collapse; font-size:12.5px; }
+.rv-extract-table th, .rv-extract-table td {
+  padding:.4rem .7rem; text-align:left; vertical-align:top;
+  border-bottom:1px solid var(--border);
+}
+.rv-extract-table th { font-weight:500; color:var(--text3); background:rgba(255,255,255,0.6); font-size:11px; letter-spacing:.02em; text-transform:uppercase; }
+.rv-extract-table td.col-code { font-family:var(--mono); font-size:10px; color:var(--text3); white-space:nowrap; width:52px; }
+.rv-extract-table td.col-name { color:var(--text2); width:45%; }
+.rv-extract-table td.col-value { color:var(--text); font-weight:500; word-break:break-word; }
+.rv-extract-table td.col-value.empty { color:var(--text3); font-style:italic; font-weight:400; }
+.rv-extract-empty, .rv-extract-loading {
+  padding:1.25rem; text-align:center; color:var(--text3); font-size:12.5px;
+}
+.rv-extract-loading .rv-loading-dot { background:var(--jade); }
+
 .rv-foot {
   padding: .75rem 1.5rem;
   border-top: 1px solid var(--border);
@@ -485,6 +673,7 @@ button.cta:hover { opacity:.93; }
   background: rgba(255,255,255,0.35);
 }
 .rv-foot-left { flex:1; font-family:var(--mono); font-size:10.5px; color:var(--text3); }
+.rv-foot-warn { font-size:10px; color:var(--amber); font-style:italic; }
 
 /* Toast */
 .toast {
@@ -501,20 +690,30 @@ button.cta:hover { opacity:.93; }
 *::-webkit-scrollbar-track { background:transparent; }
 *::-webkit-scrollbar-thumb { background:#cebfa8; border-radius:3px; }
 
+@media (max-width:1200px) {
+  .app { padding:.35rem; gap:.35rem; }
+  .left-panel, .extract-panel { flex-basis: clamp(320px, 30vw, 420px); }
+}
 @media (max-width:768px) {
   body { overflow:auto; }
-  .app { flex-direction:column; height:auto; padding:.75rem; gap:.75rem; }
-  .left-panel { width:100%; }
+  .app { flex-direction:column; width:100%; height:auto; min-height:100dvh; padding:0; gap:.5rem; }
+  .left-panel { width:100%; flex-basis:auto; }
   .right-panel { min-height:60vh; }
+  .extract-panel { width:100%; flex-basis:auto; min-height:50vh; }
+  .panel-splitter { display:none; }
+  .rv-head { align-items:flex-start; }
+  .rv-head-acts { width:100%; justify-content:flex-start; }
+  .rv-nav { flex-wrap:wrap; align-items:center; }
+  .rv-thumbs { flex:1 1 100%; width:100%; }
 }
 </style>
 </head>
 <body>
 
-<div class="app">
+<div class="app" id="app">
 
   <!-- ══ LEFT PANEL ══ -->
-  <div class="left-panel">
+  <div class="left-panel panel-shell">
 
     <div class="lp-head">
       <div>
@@ -569,9 +768,11 @@ button.cta:hover { opacity:.93; }
 
   </div><!-- /left-panel -->
 
+  <div class="panel-splitter" id="splitter-left" data-splitter="left" role="separator" aria-orientation="vertical" aria-label="Kéo để đổi kích thước khung trái"></div>
+
 
   <!-- ══ RIGHT PANEL ══ -->
-  <div class="right-panel">
+  <div class="right-panel panel-shell">
 
     <!-- Empty state -->
     <div class="rp-empty" id="rp-empty">
@@ -592,9 +793,10 @@ button.cta:hover { opacity:.93; }
           <div class="rv-filemeta" id="rv-filemeta"></div>
         </div>
         <div class="rv-head-acts">
+          <button type="button" id="btn-edit-page" onclick="toggleEditPage(event)">Sửa trang</button>
           <button type="button" onclick="copyPage(event)">Sao chép trang</button>
           <button type="button" onclick="copyAll(event)">Sao chép tất cả</button>
-          <button type="button" onclick="downloadTex(event)">Tải .tex</button>
+          <button type="button" onclick="downloadTxt(event)">Tải .txt</button>
           <button type="button" onclick="downloadPdf(event)">Tải PDF</button>
         </div>
       </div>
@@ -616,19 +818,40 @@ button.cta:hover { opacity:.93; }
 
       <div class="rv-foot">
         <div class="rv-foot-left" id="rv-foot-left"></div>
+        <div class="rv-foot-warn">⚠ Hệ thống OCR có thể mắc lỗi, hãy cẩn trọng và rà soát lại các thông tin quan trọng trước khi sử dụng</div>
       </div>
 
     </div><!-- /rp-viewer -->
 
   </div><!-- /right-panel -->
 
+  <div class="panel-splitter" id="splitter-right" data-splitter="right" role="separator" aria-orientation="vertical" aria-label="Kéo để đổi kích thước khung phải"></div>
+
+  <!-- ══ EXTRACT PANEL ══ -->
+  <div class="extract-panel panel-shell">
+    <div class="rv-extract" id="rv-extract">
+      <div class="rv-extract-head">
+        <div class="rv-extract-title">Trích xuất trường</div>
+        <div class="rv-extract-meta" id="rv-extract-meta"></div>
+        <div class="rv-extract-actions">
+          <button type="button" class="rv-extract-copy" id="rv-extract-copy" onclick="copyExtract(event)">Sao chép JSON</button>
+          <button type="button" class="rv-extract-btn" id="rv-extract-btn" onclick="runExtract()">Trích xuất</button>
+        </div>
+      </div>
+      <div id="rv-extract-body" style="padding:0 1.25rem 1.25rem;">
+        <div class="rv-extract-empty">Chưa có kết quả trích xuất.</div>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /app -->
 
 <div class="toast" id="toast"></div>
 
 <script>
-const UI_DEFAULT_OCR_API = 'https://ordinary-otter-10.loca.lt';
-const UI_DEFAULT_LATEX_API = 'https://ordinary-otter-10.loca.lt';
+// Keep in sync with colab/run_local_src.py default SUBDOMAIN.
+const UI_DEFAULT_OCR_API = ' https://cabinets-fruit-mainstream-karma.trycloudflare.com';
+const UI_DEFAULT_LATEX_API = ' https://cabinets-fruit-mainstream-karma.trycloudflare.com';
 const urlParams = new URLSearchParams(window.location.search);
 const queryApi = (urlParams.get('api') || '').trim().replace(/\/+$/,'');
 const queryOcrApi = (urlParams.get('ocr_api') || '').trim().replace(/\/+$/,'');
@@ -647,12 +870,218 @@ if (queryApi) {
 if (queryOcrApi) localStorage.setItem('hvks_ocr_api', OCR_API);
 if (queryLatexApi) localStorage.setItem('hvks_latex_api', LATEX_API);
 const $ = id => document.getElementById(id);
+const appEl = $('app');
+const viewerBodyEl = document.querySelector('.rv-body');
+const paneEls = {
+  left: document.querySelector('.left-panel'),
+  middle: document.querySelector('.right-panel'),
+  right: document.querySelector('.extract-panel')
+};
+const splitterEls = {
+  left: $('splitter-left'),
+  right: $('splitter-right')
+};
+const LAYOUT_STORAGE_KEY = 'hvks_panel_layout_v1';
 
 let files   = [];    // File objects
 let results = {};    // fileKey → { filename, pages, total_time_s, totalPages }
+let extracts = {};   // fileKey → { status: 'idle'|'running'|'done'|'error', data, error, time_s }
 let timers  = {};
 let viewerKey  = null;   // fileKey currently shown in right panel
 let viewerPage = 1;
+let paneWidths = null;
+let activePaneResize = null;
+
+function isDesktopLayout(){
+  return window.matchMedia('(min-width: 769px)').matches;
+}
+function getSplitterSize(){
+  return parseFloat(getComputedStyle(appEl).getPropertyValue('--splitter-size')) || 12;
+}
+function getPaneMinWidths(total){
+  return {
+    left: Math.max(280, Math.min(360, total * 0.22)),
+    middle: Math.max(360, Math.min(560, total * 0.4)),
+    right: Math.max(280, Math.min(360, total * 0.22))
+  };
+}
+function getPaneGapTarget(){
+  return 48;
+}
+function getDesktopPaneWidth(){
+  const cs = getComputedStyle(appEl);
+  const paddingL = parseFloat(cs.paddingLeft) || 0;
+  const paddingR = parseFloat(cs.paddingRight) || 0;
+  const gap = parseFloat(cs.columnGap || cs.gap) || 0;
+  // .app flex layout: [left · splitter · middle · splitter · right] → 4 gaps, 2 splitters
+  const splittersTotal = getSplitterSize() * 2;
+  const gapsTotal = gap * 4;
+  return Math.max(0, appEl.clientWidth - paddingL - paddingR - splittersTotal - gapsTotal);
+}
+function clamp(value, min, max){
+  if(max < min) max = min;
+  return Math.min(Math.max(value, min), max);
+}
+function readPaneWidthsFromDom(){
+  return {
+    left: paneEls.left.getBoundingClientRect().width,
+    middle: paneEls.middle.getBoundingClientRect().width,
+    right: paneEls.right.getBoundingClientRect().width
+  };
+}
+function clearPaneInlineSizes(){
+  Object.values(paneEls).forEach(el=>{
+    el.style.flex = '';
+    el.style.width = '';
+  });
+}
+function normalizePaneWidths(nextWidths, total){
+  const mins = getPaneMinWidths(total);
+  let left = Number.isFinite(nextWidths?.left) ? nextWidths.left : total * 0.24;
+  let middle = Number.isFinite(nextWidths?.middle) ? nextWidths.middle : total * 0.52;
+  let right = Number.isFinite(nextWidths?.right) ? nextWidths.right : total * 0.24;
+  const sum = left + middle + right || 1;
+  const scale = total / sum;
+  left *= scale;
+  middle *= scale;
+  right *= scale;
+
+  if(left < mins.left){ middle -= (mins.left - left); left = mins.left; }
+  if(right < mins.right){ middle -= (mins.right - right); right = mins.right; }
+
+  if(middle < mins.middle){
+    let deficit = mins.middle - middle;
+    const takeLeft = Math.min(deficit / 2, Math.max(0, left - mins.left));
+    left -= takeLeft;
+    middle += takeLeft;
+    deficit -= takeLeft;
+    const takeRight = Math.min(deficit, Math.max(0, right - mins.right));
+    right -= takeRight;
+    middle += takeRight;
+    deficit -= takeRight;
+    if(deficit > 0){
+      const extraLeft = Math.min(deficit, Math.max(0, left - mins.left));
+      left -= extraLeft;
+      middle += extraLeft;
+      deficit -= extraLeft;
+      const extraRight = Math.min(deficit, Math.max(0, right - mins.right));
+      right -= extraRight;
+      middle += extraRight;
+    }
+  }
+
+  const gap = getPaneGapTarget();
+  let need = Math.max(0, (left - middle + gap) / 2);
+  if(need > 0){
+    const shift = Math.min(need, Math.max(0, left - mins.left));
+    left -= shift;
+    middle += shift;
+  }
+  need = Math.max(0, (right - middle + gap) / 2);
+  if(need > 0){
+    const shift = Math.min(need, Math.max(0, right - mins.right));
+    right -= shift;
+    middle += shift;
+  }
+
+  let remainder = total - (left + middle + right);
+  middle += remainder;
+
+  const out = {
+    left: Math.round(left),
+    middle: Math.round(middle),
+    right: Math.round(right)
+  };
+  const roundedRemainder = total - (out.left + out.middle + out.right);
+  out.middle += roundedRemainder;
+  return out;
+}
+function persistPaneWidths(){
+  if(!paneWidths || !isDesktopLayout()) return;
+  localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(paneWidths));
+}
+function applyPaneWidths(nextWidths, { persist = true } = {}){
+  if(!appEl) return;
+  if(!isDesktopLayout()){
+    paneWidths = null;
+    clearPaneInlineSizes();
+    return;
+  }
+  const total = getDesktopPaneWidth();
+  paneWidths = normalizePaneWidths(nextWidths || paneWidths || readPaneWidthsFromDom(), total);
+  paneEls.left.style.flex = `0 0 ${paneWidths.left}px`;
+  paneEls.middle.style.flex = `0 0 ${paneWidths.middle}px`;
+  paneEls.right.style.flex = `0 0 ${paneWidths.right}px`;
+  paneEls.left.style.width = `${paneWidths.left}px`;
+  paneEls.middle.style.width = `${paneWidths.middle}px`;
+  paneEls.right.style.width = `${paneWidths.right}px`;
+  if(persist) persistPaneWidths();
+}
+function loadPaneWidths(){
+  try {
+    const saved = JSON.parse(localStorage.getItem(LAYOUT_STORAGE_KEY) || 'null');
+    if(saved && Number.isFinite(saved.left) && Number.isFinite(saved.middle) && Number.isFinite(saved.right)) return saved;
+  } catch {}
+  return null;
+}
+function updatePaneWidthsForViewport(){
+  const source = paneWidths || loadPaneWidths() || readPaneWidthsFromDom();
+  applyPaneWidths(source, { persist: false });
+}
+function startPaneResize(evt, side){
+  if(!isDesktopLayout()) return;
+  evt.preventDefault();
+  const current = paneWidths || normalizePaneWidths(readPaneWidthsFromDom(), getDesktopPaneWidth());
+  activePaneResize = {
+    side,
+    startX: evt.clientX,
+    ...current
+  };
+  document.body.classList.add('is-resizing');
+  window.addEventListener('pointermove', handlePaneResize);
+  window.addEventListener('pointerup', stopPaneResize);
+  window.addEventListener('pointercancel', stopPaneResize);
+}
+function handlePaneResize(evt){
+  if(!activePaneResize || !isDesktopLayout()) return;
+  const mins = getPaneMinWidths(getDesktopPaneWidth());
+  const gap = getPaneGapTarget();
+  const dx = evt.clientX - activePaneResize.startX;
+  if(activePaneResize.side === 'left'){
+    const pair = activePaneResize.left + activePaneResize.middle;
+    const maxLeft = Math.min(pair - mins.middle, (pair - gap) / 2);
+    const left = clamp(activePaneResize.left + dx, mins.left, maxLeft);
+    applyPaneWidths({
+      left,
+      middle: pair - left,
+      right: activePaneResize.right
+    }, { persist: false });
+    return;
+  }
+  const pair = activePaneResize.middle + activePaneResize.right;
+  const maxRight = Math.min(pair - mins.middle, (pair - gap) / 2);
+  const right = clamp(activePaneResize.right - dx, mins.right, maxRight);
+  applyPaneWidths({
+    left: activePaneResize.left,
+    middle: pair - right,
+    right
+  }, { persist: false });
+}
+function stopPaneResize(){
+  if(!activePaneResize) return;
+  activePaneResize = null;
+  document.body.classList.remove('is-resizing');
+  window.removeEventListener('pointermove', handlePaneResize);
+  window.removeEventListener('pointerup', stopPaneResize);
+  window.removeEventListener('pointercancel', stopPaneResize);
+  persistPaneWidths();
+}
+function initResizablePanels(){
+  if(splitterEls.left) splitterEls.left.addEventListener('pointerdown', evt=>startPaneResize(evt, 'left'));
+  if(splitterEls.right) splitterEls.right.addEventListener('pointerdown', evt=>startPaneResize(evt, 'right'));
+  updatePaneWidthsForViewport();
+  window.addEventListener('resize', updatePaneWidthsForViewport);
+}
 
 // ── Health ─────────────────────────────────────────────────────────────────
 let healthPoll;
@@ -673,34 +1102,51 @@ function setStatus(state, label) {
   d.className = 'status-dot' + (state==='loading'?' pulse':'');
   $('status-text').textContent = label;
 }
+let ocrReady = false;
 let latexReady = false;
 let pdfReady = false;
 async function pingHealth(url){
   try {
     const r = await fetch(buildApiUrl(url,'/health'),{
       headers: buildApiHeaders(url),
-      signal: AbortSignal.timeout(6000)
+      signal: AbortSignal.timeout(30000)
     });
     return await r.json();
   } catch { return null; }
 }
+let healthFailStreak = 0;
 async function checkHealth() {
   const [ocr, latex] = await Promise.all([pingHealth(OCR_API), pingHealth(LATEX_API)]);
   const ocrOk   = ocr && ocr.vllm==='ready';
   const latexOk = latex && latex.vllm==='ready';
   const pdfOk   = latexOk && latex.xelatex;
+  if (ocr!==null || latex!==null) { healthFailStreak = 0; }
+  else { healthFailStreak += 1; }
+  ocrReady   = !!ocrOk;
   latexReady = !!latexOk;
   pdfReady   = !!pdfOk;
 
-  if (ocr===null && latex===null) { setStatus('error','Không kết nối được'); return; }
-  if (ocrOk && pdfOk) { setStatus('ready','OCR + LaTeX/PDF sẵn sàng'); clearInterval(healthPoll); return; }
-  if (ocrOk && latexOk && !pdfOk) { setStatus('loading','OCR + LaTeX ok · thiếu xelatex để xuất PDF'); return; }
-  if (ocrOk && !latexOk) { setStatus('loading','OCR ok · LaTeX '+(latex?'đang load':'lỗi')); return; }
+  const anyProcessing = files.some(f=>f._ocrProc);
+
+  if (ocr===null && latex===null) {
+    if (healthFailStreak >= 3 && !anyProcessing) {
+      setStatus('error','Không kết nối được');
+    } else {
+      setStatus('loading', anyProcessing ? 'Đang xử lý · health chậm phản hồi' : 'Health chậm, đang thử lại…');
+    }
+    if(files.length) renderQueue();
+    return;
+  }
+  if (ocrOk && pdfOk) { setStatus('ready','OCR + LaTeX/PDF sẵn sàng'); if(files.length) renderQueue(); return; }
+  if (ocrOk && latexOk && !pdfOk) { setStatus('loading','OCR + LaTeX ok · thiếu xelatex để xuất PDF'); if(files.length) renderQueue(); return; }
+  if (ocrOk && !latexOk) { setStatus('loading','OCR ok · LaTeX '+(latex?'đang load':'lỗi')); if(files.length) renderQueue(); return; }
   if (!ocrOk && latexOk) {
     setStatus('loading', pdfOk ? 'LaTeX/PDF ok · OCR '+(ocr?'đang load':'lỗi') : 'LaTeX ok · PDF chưa sẵn · OCR '+(ocr?'đang load':'lỗi'));
+    if(files.length) renderQueue();
     return;
   }
   setStatus('loading','Model đang load…');
+  if(files.length) renderQueue();
 }
 setStatus('loading','Đang kết nối…');
 checkHealth();
@@ -723,6 +1169,37 @@ function addFiles(nf) {
   renderQueue();
 }
 
+function stopFileTimers(file){
+  const prefix='chip-'+slug(file.name);
+  Object.keys(timers).forEach(id=>{ if(id.startsWith(prefix)) stopTimer(id); });
+}
+
+function setFileError(file, message){
+  const k=fileKey(file);
+  file._ocrProc=false;
+  file._ocrDone=false;
+  file._selected=true;
+  file._ocrError=message;
+  stopFileTimers(file);
+  if(results[k]){
+    results[k].error=message;
+    if(!results[k].total_time_s) results[k].total_time_s=0;
+  }
+  if(viewerKey===k){
+    refreshViewerHeader(k);
+    refreshViewerThumbsLive(k);
+    showViewerPage(viewerPage);
+    renderExtract(k);
+  }
+  renderQueue();
+}
+
+function clearFileError(file){
+  const k=fileKey(file);
+  delete file._ocrError;
+  if(results[k]) delete results[k].error;
+}
+
 function clearFiles(evt) {
   evt?.preventDefault?.();
   if(!files.length) return;
@@ -734,7 +1211,9 @@ function clearFiles(evt) {
   // Giữ lại results của file đang xử lý
   const newResults={};
   procKeys.forEach(k=>{ if(results[k]) newResults[k]=results[k]; });
-  files=procFiles; results=newResults;
+  const newExtracts={};
+  procKeys.forEach(k=>{ if(extracts[k]) newExtracts[k]=extracts[k]; });
+  files=procFiles; results=newResults; extracts=newExtracts;
   if(viewerKey&&!procKeys.has(viewerKey)){ viewerKey=null; showEmptyState(); }
   $('stats-mini').style.display='none';
   if(!procFiles.length) $('prog-wrap').style.display='none';
@@ -748,6 +1227,7 @@ function removeFile(i) {
   files.splice(i,1);
   const k=fileKey(f);
   delete results[k];
+  delete extracts[k];
   if(viewerKey===k){ viewerKey=null; showEmptyState(); }
   updateStats();
   renderQueue();
@@ -755,7 +1235,7 @@ function removeFile(i) {
 
 function renderQueue() {
   const q=$('lp-queue');
-  $('lp-empty').style.display=files.length?'none':'flex';
+  const emptyEl=$('lp-empty');
   const runBar=$('run-bar');
 
   // Remove old fq-items (keep lp-empty)
@@ -763,28 +1243,53 @@ function renderQueue() {
 
   const searchTerm=($('lp-search')?$('lp-search').value:'').toLowerCase().trim();
   const countEl=$('lp-queue-count');
-  if(countEl) countEl.textContent=files.length+' file';
+  let visibleCount=0;
 
   files.forEach((f,i)=>{
     const k=fileKey(f);
     const r=results[k];
     const done=!!f._ocrDone;
     const proc=!!f._ocrProc;
+    const errored=!!f._ocrError;
     const sel=!!f._selected;
+    const canOpenViewer = done || proc || (errored && r?.pages?.length);
+    const canSelectForRun = !done && !proc;
 
     if(searchTerm && !f.name.toLowerCase().includes(searchTerm)) return;
+    visibleCount++;
 
-    const state = done?'done': proc?'proc': sel?'selected':'new';
-    const stateLabel = done?'đã OCR': proc?'đang xử lý': sel?'đã chọn':'chưa chọn';
+    const state = done?'done': proc?'proc': errored?'err': sel?'selected':'new';
+    const stateLabel = done
+      ? 'đã OCR'
+      : proc
+        ? 'đang xử lý'
+        : sel
+          ? (errored ? 'đã chọn lại' : 'đã chọn')
+          : errored
+            ? 'cần chạy lại'
+            : 'chưa chọn';
 
-    const pagesInfo = r ? `${r.pages.length} trang · ${r.total_time_s.toFixed(1)}s` : fmtSz(f.size);
+    let pagesInfo = fmtSz(f.size);
+    if(r){
+      const totalLabel=r.totalPages?`${r.pages.length}/${r.totalPages} trang`:`${r.pages.length} trang`;
+      if(done) pagesInfo=`${totalLabel} · ${r.total_time_s.toFixed(1)}s`;
+      else if(proc) pagesInfo=`${totalLabel} · đang xử lý`;
+      else if(errored) pagesInfo=`${totalLabel} · lỗi OCR`;
+      else pagesInfo=totalLabel;
+    } else if(errored){
+      pagesInfo='Lỗi OCR · cần chạy lại';
+    }
 
     const div=document.createElement('div');
-    div.className='fq-item'+(done?' done':'')+(sel&&!done&&!proc?' selected':'')+(viewerKey===k?' active':'');
+    div.className='fq-item'+(done?' done':'')+(errored&&!done&&!proc?' error':'')+(sel&&canSelectForRun?' selected':'')+(viewerKey===k?' active':'');
     div.id='fqi-'+slug(f.name);
     div.title=f.name;
+    const checkMark = done ? '✓' : sel ? '✓' : '';
+    const checkHtml = canSelectForRun
+      ? `<button type="button" class="fq-check" title="${sel ? 'Bỏ chọn file này' : 'Chọn file này'}" aria-label="${sel ? 'Bỏ chọn file này' : 'Chọn file này'}">${checkMark}</button>`
+      : `<div class="fq-check static" aria-hidden="true">${checkMark}</div>`;
     div.innerHTML=`
-      <div class="fq-check">${done?'✓':sel?'✓':''}</div>
+      ${checkHtml}
       <div class="fq-icon">${ext(f.name)}</div>
       <div class="fq-info">
         <div class="fq-name">${esc(f.name)}</div>
@@ -794,21 +1299,32 @@ function renderQueue() {
       <button class="fq-rm" onclick="removeFile(${i});event.stopPropagation()" title="Xoá">×</button>`;
     div.addEventListener('click',e=>{
       if(e.target.closest('.fq-rm')) return;
-      const isRunning=files.some(f=>f._ocrProc);
-      if(isRunning){ toast('Đang OCR, vui lòng đợi xong'); return; }
-      if(done){
-        if(viewerKey===k){ viewerKey=null; showEmptyState(); renderQueue(); }
-        else openViewer(k);
+      if(e.target.closest('.fq-check')){
+        if(canSelectForRun) toggleSelect(i);
+        return;
       }
-      else toggleSelect(i);
+      if(canOpenViewer){
+        if(viewerKey===k){ viewerKey=null; showEmptyState(); renderQueue(); }
+        else { openViewer(k); renderQueue(); }
+      } else {
+        // File chưa OCR → toggle chọn, giữ nguyên viewer
+        if(files.some(x=>x._ocrProc)){ toast('Đang OCR, vui lòng chờ'); return; }
+        toggleSelect(i);
+      }
     });
     q.appendChild(div);
   });
 
+  if(countEl) countEl.textContent=searchTerm ? `${visibleCount}/${files.length} file` : files.length+' file';
+  emptyEl.textContent = files.length
+    ? (visibleCount ? '' : 'Không có file phù hợp')
+    : 'Chưa có file nào';
+  emptyEl.style.display=visibleCount?'none':'flex';
   runBar.style.display=files.length?'flex':'none';
   // Cập nhật số file đã chọn trên nút
   const selCount=files.filter(f=>f._selected&&!f._ocrDone&&!f._ocrProc).length;
   $('run-btn').textContent=selCount?`Chạy OCR (${selCount})`:'Chạy OCR';
+  $('run-btn').disabled = !selCount || !!files.some(f=>f._ocrProc) || !ocrReady;
 }
 
 // ── OCR ────────────────────────────────────────────────────────────────────
@@ -818,20 +1334,21 @@ function toggleSelect(i){
 }
 function selectAll(evt){
   evt?.preventDefault?.();
-  files.forEach(f=>{ if(!f._ocrDone&&!f._ocrProc) f._selected=true; });
+  if(files.some(f=>f._ocrProc)){ toast('Đang OCR, vui lòng chờ'); return; }
+  files.forEach(f=>{ if(!f._ocrDone) f._selected=true; });
   renderQueue();
 }
 function deselectAll(evt){
   evt?.preventDefault?.();
-  files.forEach(f=>{ if(!f._ocrProc) f._selected=false; });
+  if(files.some(f=>f._ocrProc)){ toast('Đang OCR, không thể bỏ chọn'); return; }
+  files.forEach(f=>f._selected=false);
   viewerKey=null; showEmptyState();
   renderQueue();
 }
 
 async function runOCR(evt) {
   evt?.preventDefault?.();
-  const sb=$('status-badge');
-  if(sb.classList.contains('error')){ toast('Chưa kết nối được server'); return; }
+  if(!ocrReady){ toast('OCR server chưa sẵn sàng'); return; }
   const pending=files.filter(f=>f._selected&&!f._ocrDone&&!f._ocrProc);
   if(!pending.length){ toast('Chọn file cần OCR trước'); return; }
   $('run-btn').disabled=true;
@@ -856,7 +1373,11 @@ function stopTimer(id){ clearInterval(timers[id]); delete timers[id]; }
 async function processFile(file) {
   file._ocrProc=true;
   const k=fileKey(file);
+  clearFileError(file);
   results[k]={ filename:file.name, pages:[], total_time_s:0, totalPages:0 };
+  delete extracts[k];
+  renderQueue();
+  if(viewerKey===k) renderExtract(k);
 
   const fd=new FormData(); fd.append('file',file);
   $('prog-wrap').style.display='block';
@@ -869,8 +1390,8 @@ async function processFile(file) {
   const badge=$('fq-badge-'+slug(file.name));
   if(badge){ badge.textContent='đang xử lý'; badge.className='fq-badge proc'; }
 
-  // Auto-open this file in viewer (live)
-  openViewer(k);
+  // Chỉ auto-open nếu chưa xem file nào
+  if(!viewerKey) openViewer(k);
 
   try {
     const res=await fetch(buildApiUrl(OCR_API,'/ocr/stream'),{
@@ -878,10 +1399,10 @@ async function processFile(file) {
       headers: buildApiHeaders(OCR_API),
       body:fd
     });
-    if(!res.ok){ toast('Lỗi server '+res.status); return; }
+    if(!res.ok) throw new Error(`Server trả về ${res.status}`);
 
     const reader=res.body.getReader(), dec=new TextDecoder();
-    let buf='', total=0, doneN=0;
+    let buf='', total=0, doneN=0, doneEvent=false;
 
     while(true){
       const {done,value}=await reader.read(); if(done) break;
@@ -920,19 +1441,24 @@ async function processFile(file) {
         } else if(ev.type==='done'){
           file._ocrDone=true; file._ocrProc=false; file._selected=false;
           results[k].total_time_s=ev.total_time_s;
+          doneEvent=true;
           renderQueue();
           $('prog-label').textContent=file.name+' — xong ✓';
           if(viewerKey===k) refreshViewerHeader(k);
 
-        } else if(ev.type==='error'){ toast('Lỗi: '+ev.detail); }
+        } else if(ev.type==='error'){
+          throw new Error(ev.detail || 'OCR stream error');
+        }
       }
     }
+
+    if(!doneEvent){
+      throw new Error(total ? 'Luồng OCR bị ngắt trước khi hoàn tất' : 'Không nhận được phản hồi OCR');
+    }
   } catch(e){
-    toast('Lỗi kết nối: '+e.message);
-    file._ocrProc=false;
-    // Dọn timer còn sót
-    Object.keys(timers).forEach(tid=>{ if(tid.startsWith('chip-'+slug(file.name))) stopTimer(tid); });
-    renderQueue();
+    const msg=e?.message||String(e);
+    toast('Lỗi OCR: '+msg);
+    setFileError(file, msg);
   }
 }
 
@@ -940,6 +1466,7 @@ async function processFile(file) {
 function showEmptyState(){
   $('rp-empty').style.display='flex';
   $('rp-viewer').classList.remove('active');
+  renderExtract(null);
 }
 
 function openViewer(k){
@@ -956,6 +1483,7 @@ function openViewer(k){
 
   refreshViewerHeader(k);
   refreshViewerThumbsLive(k);
+  renderExtract(k);
 
   // Go to page 1 (or first available)
   const first=r.pages[0];
@@ -970,8 +1498,11 @@ function refreshViewerHeader(k){
   $('rv-filename').textContent=r.filename;
   const total=r.totalPages||r.pages.length;
   const done=r.pages.length;
-  const time=r.total_time_s?r.total_time_s.toFixed(1)+'s':'đang xử lý…';
-  $('rv-filemeta').textContent=`${done}/${total} trang · ${time}`;
+  const totalLabel=total||'…';
+  const time=r.total_time_s
+    ? r.total_time_s.toFixed(1)+'s'
+    : (r.error ? 'lỗi OCR' : 'đang xử lý…');
+  $('rv-filemeta').textContent=`${done}/${totalLabel} trang · ${time}`;
 }
 
 function refreshViewerThumbsLive(k){
@@ -1172,36 +1703,125 @@ function renderInline(text){
   return out;
 }
 
+let editingKey=null, editingPage=null;
+
+function isEditing(){ return editingKey!=null && editingPage!=null; }
+
+function toggleEditPage(evt){
+  evt?.preventDefault?.();
+  if(!viewerKey){ toast('Chưa mở file nào'); return; }
+  const r=results[viewerKey]; if(!r) return;
+  const pageData=r.pages.find(x=>x.page===viewerPage);
+  if(!pageData){ toast('Trang này chưa có nội dung OCR'); return; }
+  if(isEditing() && editingKey===viewerKey && editingPage===viewerPage){
+    saveEditPage();
+  } else {
+    startEditPage();
+  }
+}
+
+function startEditPage(){
+  const r=results[viewerKey]; const pageData=r.pages.find(x=>x.page===viewerPage);
+  if(!pageData) return;
+  editingKey=viewerKey; editingPage=viewerPage;
+  const textEl=$('rv-text');
+  if(viewerBodyEl) viewerBodyEl.classList.add('editing-mode');
+  textEl.className='rv-text editing';
+  textEl.innerHTML=`
+    <textarea id="rv-edit-area" class="rv-edit-area" spellcheck="false"></textarea>
+    <div class="rv-edit-bar">
+      <span class="rv-edit-hint">Sửa xong bấm Lưu hoặc chuyển trang để tự lưu.</span>
+      <button type="button" class="rv-edit-cancel" onclick="cancelEditPage(event)">Huỷ</button>
+      <button type="button" class="rv-edit-save" onclick="saveEditPage(event)">Lưu</button>
+    </div>`;
+  const ta=$('rv-edit-area');
+  if(ta){ ta.value=pageData.text||''; ta.focus(); }
+  const btn=$('btn-edit-page'); if(btn) btn.textContent='Lưu trang';
+}
+
+function saveEditPage(evt){
+  evt?.preventDefault?.();
+  if(!isEditing()){ return; }
+  const ta=$('rv-edit-area');
+  const r=results[editingKey]; const pageData=r&&r.pages.find(x=>x.page===editingPage);
+  let changed=false;
+  if(ta && pageData){
+    const newText=ta.value;
+    if(newText !== pageData.text){
+      pageData.text=newText;
+      pageData.edited=true;
+      changed=true;
+      if(extracts[editingKey]) extracts[editingKey]=null;
+    }
+  }
+  const savedKey=editingKey, savedPage=editingPage;
+  editingKey=null; editingPage=null;
+  const btn=$('btn-edit-page'); if(btn) btn.textContent='Sửa trang';
+  if(viewerKey===savedKey && viewerPage===savedPage){
+    showViewerPage(viewerPage);
+    if(viewerKey) renderExtract(viewerKey);
+  }
+  if(changed) toast('Đã lưu');
+}
+
+function cancelEditPage(evt){
+  evt?.preventDefault?.();
+  editingKey=null; editingPage=null;
+  const btn=$('btn-edit-page'); if(btn) btn.textContent='Sửa trang';
+  showViewerPage(viewerPage);
+}
+
 function showViewerPage(p){
+  // Nếu đang edit trang khác → auto-save trước khi chuyển
+  if(isEditing() && !(editingKey===viewerKey && editingPage===p)){
+    saveEditPage();
+  }
   const r=results[viewerKey]; if(!r) return;
   viewerPage=p;
   const pageData=r.pages.find(x=>x.page===p);
-  const total=r.totalPages||r.pages.length;
+  const totalKnown=!!(r.totalPages||r.pages.length);
+  const total=r.totalPages||r.pages.length||1;
 
-  $('rv-page-label').textContent=`Trang ${p} / ${total}`;
+  const editedTag=pageData&&pageData.edited?' <span class="edited-tag">ĐÃ SỬA</span>':'';
+  $('rv-page-label').innerHTML=`Trang ${p} / ${totalKnown ? total : '…'}${editedTag}`;
   $('rv-prev').disabled=p<=1;
-  $('rv-next').disabled=p>=total;
+  $('rv-next').disabled=!totalKnown || p>=total;
+
+  const btn=$('btn-edit-page');
+  if(btn){
+    if(isEditing() && editingKey===viewerKey && editingPage===p) btn.textContent='Lưu trang';
+    else btn.textContent='Sửa trang';
+  }
 
   const textEl=$('rv-text');
   if(!pageData){
+    if(viewerBodyEl) viewerBodyEl.classList.remove('editing-mode');
     textEl.className='rv-text placeholder';
-    textEl.innerHTML=`<div class="rv-loading"><div class="rv-loading-dot"></div><div class="rv-loading-dot"></div><div class="rv-loading-dot"></div>&nbsp; Đang xử lý trang ${p}…</div>`;
+    if(r.error){
+      textEl.innerHTML=`<div class="rv-loading">⚠ OCR dừng lại trước khi có nội dung cho file này.</div>`;
+    } else {
+      textEl.innerHTML=`<div class="rv-loading"><div class="rv-loading-dot"></div><div class="rv-loading-dot"></div><div class="rv-loading-dot"></div>&nbsp; Đang xử lý trang ${p}…</div>`;
+    }
     $('rv-page-time').textContent='';
+  } else if(isEditing() && editingKey===viewerKey && editingPage===p){
+    if(viewerBodyEl) viewerBodyEl.classList.add('editing-mode');
+    // Đang ở trang edit — giữ nguyên textarea hiện có (nếu có)
+    if(!$('rv-edit-area')) startEditPage();
+    $('rv-page-time').textContent=pageData.time_s+'s';
   } else {
+    if(viewerBodyEl) viewerBodyEl.classList.remove('editing-mode');
     textEl.className='rv-text';
     textEl.innerHTML=renderPageText(getPageText(pageData));
     $('rv-page-time').textContent=pageData.time_s+'s';
   }
 
   $('rv-foot-left').textContent=pageData&&pageData.ok?`Trang ${p} · ${pageData.time_s}s`:
-    pageData&&!pageData.ok?'⚠ Trang này có lỗi OCR':'';
+    pageData&&!pageData.ok?'⚠ Trang này có lỗi OCR':(r.error?'⚠ File này cần chạy lại OCR':'');
 
-  // Sync thumb highlight
   document.querySelectorAll('.rv-thumb').forEach((el,i)=>{
     el.classList.toggle('active', i+1===p);
   });
 
-  // Scroll to top of content
   document.querySelector('.rv-body').scrollTop=0;
 }
 
@@ -1219,6 +1839,7 @@ $('rv-page-jump').addEventListener('keydown',e=>{
     const v=parseInt(e.target.value);
     const r=results[viewerKey]; if(!r) return;
     const total=r.totalPages||r.pages.length;
+    if(!total){ toast('File này đang chờ phản hồi OCR'); return; }
     if(v>=1&&v<=total){ goPage(v); e.target.value=''; e.target.blur(); }
     else toast(`Trang từ 1 đến ${total}`);
     autoSizeJump();
@@ -1291,6 +1912,125 @@ function buildOcrInput(r){
     .join('\n\n');
 }
 
+// ── Extract (trích xuất trường) ────────────────────────────────────────────
+async function runExtract(key){
+  const k=key||viewerKey;
+  if(!k){ toast('Chưa có file để trích xuất'); return; }
+  const r=results[k]; if(!r || !r.pages?.length){ toast('Chưa có OCR để trích xuất'); return; }
+
+  const text=buildOcrInput(r);
+  extracts[k]={ status:'running', data:null, error:null, time_s:0 };
+  if(viewerKey===k) renderExtract(k);
+
+  try{
+    const res=await fetch(buildApiUrl(OCR_API,'/extract'),{
+      method:'POST',
+      headers: { ...buildApiHeaders(OCR_API), 'Content-Type':'application/json' },
+      body: JSON.stringify({ text })
+    });
+    if(!res.ok){
+      const detail=await res.text().catch(()=>'');
+      extracts[k]={ status:'error', data:null, error:`HTTP ${res.status}: ${detail.slice(0,200)}`, time_s:0 };
+    } else {
+      const data=await res.json();
+      extracts[k]={ status:'done', data, error:null, time_s:data.total_time_s||0 };
+    }
+  } catch(e){
+    extracts[k]={ status:'error', data:null, error:e.message||String(e), time_s:0 };
+  }
+  if(viewerKey===k) renderExtract(k);
+}
+
+function renderExtract(k){
+  const state=extracts[k];
+  const body=$('rv-extract-body');
+  const meta=$('rv-extract-meta');
+  const btn=$('rv-extract-btn');
+  const copyBtn=$('rv-extract-copy');
+  if(!body) return;
+  if(!k){
+    body.innerHTML='<div class="rv-extract-empty">Chọn một file để xem hoặc trích xuất dữ liệu.</div>';
+    meta.textContent='';
+    btn.disabled=true; btn.textContent='Trích xuất';
+    copyBtn.style.display='none';
+    return;
+  }
+
+  const fileResult=results[k];
+  if(!fileResult || !fileResult.pages?.length){
+    body.innerHTML='<div class="rv-extract-empty">OCR xong file rồi bấm Trích xuất để lấy các trường.</div>';
+    meta.textContent='';
+    btn.disabled=true; btn.textContent='Trích xuất';
+    copyBtn.style.display='none';
+    return;
+  }
+
+  if(!state){
+    body.innerHTML='<div class="rv-extract-empty">Chưa chạy trích xuất cho file này.</div>';
+    meta.textContent='';
+    btn.disabled=false; btn.textContent='Trích xuất';
+    copyBtn.style.display='none';
+    return;
+  }
+  if(state.status==='running'){
+    body.innerHTML='<div class="rv-extract-loading"><div class="rv-loading"><div class="rv-loading-dot"></div><div class="rv-loading-dot"></div><div class="rv-loading-dot"></div></div>&nbsp; Đang trích xuất 4 nhóm song song…</div>';
+    meta.textContent='Đang xử lý…';
+    btn.disabled=true; btn.textContent='Đang chạy';
+    copyBtn.style.display='none';
+    return;
+  }
+  if(state.status==='error'){
+    body.innerHTML=`<div class="rv-extract-empty">⚠ Lỗi: ${esc(state.error||'')}</div>`;
+    meta.textContent='Lỗi';
+    btn.disabled=false; btn.textContent='Thử lại';
+    copyBtn.style.display='none';
+    return;
+  }
+
+  const groups=state.data?.groups||[];
+  const total=groups.reduce((s,g)=>s+(g.fields?.length||0),0);
+  const filled=groups.reduce((s,g)=>s+(g.fields||[]).filter(f=>f.value).length,0);
+  meta.textContent=`${filled}/${total} trường · ${state.time_s}s`;
+  btn.disabled=false; btn.textContent='Chạy lại';
+  copyBtn.style.display='inline-block';
+
+  body.innerHTML=groups.map(g=>{
+    const rows=(g.fields||[]).map(f=>{
+      const v=f.value||'';
+      const cls=v?'col-value':'col-value empty';
+      return `<tr><td class="col-code">${esc(f.col)}</td><td class="col-name">${esc(f.ten_truong)}</td><td class="${cls}">${v?esc(v):'(trống)'}</td></tr>`;
+    }).join('');
+    const statusTag=g.ok
+      ? `<span class="tag">${(g.fields||[]).filter(f=>f.value).length}/${(g.fields||[]).length} · ${g.time_s||0}s</span>`
+      : `<span class="tag err">lỗi: ${esc(g.error||'')}</span>`;
+    return `<div class="rv-extract-group">
+      <div class="rv-extract-group-head">${esc(g.name)} ${statusTag}</div>
+      <table class="rv-extract-table">
+        <thead><tr><th>Col</th><th>Tên trường</th><th>Giá trị</th></tr></thead>
+        <tbody>${rows||'<tr><td colspan="3" class="col-value empty">(không có trường)</td></tr>'}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+}
+
+function copyExtract(evt){
+  evt?.preventDefault?.();
+  const state=extracts[viewerKey];
+  if(!state || state.status!=='done'){ toast('Chưa có dữ liệu để sao chép'); return; }
+  const out={};
+  for(const g of (state.data?.groups||[])){
+    const groupKey=g.name||g.id||g.file||'Nhóm';
+    const groupObj={};
+    for(const f of (g.fields||[])){
+      let key=f.ten_truong||f.col;
+      if(key in groupObj) key=`${key} (${f.col})`;
+      groupObj[key]=f.value||'';
+    }
+    out[groupKey]=groupObj;
+  }
+  navigator.clipboard.writeText(JSON.stringify(out, null, 2)).then(()=>toast('Đã sao chép JSON'));
+}
+
 function wrapLatexDocument(body){
   return `\\documentclass[12pt,a4paper]{article}
 \\usepackage{fontspec}
@@ -1342,47 +2082,16 @@ function downloadBlob(blob, filename){
   }, 2000);
 }
 
-async function downloadTex(evt){
+function downloadTxt(evt){
   evt?.preventDefault?.();
   evt?.stopPropagation?.();
   if(!viewerKey){ toast('Chưa mở file nào'); return; }
   const r=results[viewerKey];
   if(!r||!r.pages.length){ toast('Chưa có kết quả'); return; }
   const baseName=r.filename.replace(/\.[^.]+$/,'');
-
-  // Nếu LaTeX server chưa sẵn sàng → dùng fallback thô
-  if(!latexReady){
-    toast('LaTeX server offline — dùng bản thô');
-    downloadBlob(new Blob([buildRawTex(r)],{type:'text/x-tex;charset=utf-8'}), baseName+'.tex');
-    return;
-  }
-
-  const btn = evt?.currentTarget || evt?.target || null;
-  setButtonLoading(btn, 'Đang sửa & viết LaTeX…');
-  toast('Đang gọi AI sửa chính tả + viết LaTeX…');
-  try {
-    const res = await fetch(buildApiUrl(LATEX_API,'/latex'),{
-      method:'POST',
-      headers: buildApiHeaders(LATEX_API, {'Content-Type':'application/json'}),
-      body: JSON.stringify({ text: buildOcrInput(r), max_tokens: 8192 })
-    });
-    if(!res.ok){
-      const t=await res.text();
-      toast('Lỗi '+res.status+' — tải bản thô');
-      downloadBlob(new Blob([buildRawTex(r)],{type:'text/x-tex;charset=utf-8'}), baseName+'.tex');
-      console.error(t);
-      return;
-    }
-    const data = await res.json();
-    const tex = data.full_document || wrapLatexDocument(data.latex_body || '');
-    downloadBlob(new Blob([tex],{type:'text/x-tex;charset=utf-8'}), baseName+'.tex');
-    toast(`Đã tạo .tex (${data.time_s}s)`);
-  } catch(e){
-    toast('Lỗi: '+e.message+' — tải bản thô');
-    downloadBlob(new Blob([buildRawTex(r)],{type:'text/x-tex;charset=utf-8'}), baseName+'.tex');
-  } finally {
-    clearButtonLoading(btn);
-  }
+  const txt=buildOcrInput(r);
+  downloadBlob(new Blob([txt],{type:'text/plain;charset=utf-8'}), baseName+'.txt');
+  toast('Đã tải .txt');
 }
 
 async function downloadPdf(evt){
@@ -1395,8 +2104,9 @@ async function downloadPdf(evt){
   const baseName=r.filename.replace(/\.[^.]+$/,'');
 
   const btn = evt?.currentTarget || evt?.target || null;
-  setButtonLoading(btn, 'Đang tạo PDF… (30–120s)');
-  toast('AI đang sửa chính tả → LaTeX → compile PDF…');
+  setButtonLoading(btn, '⏳ Đang tạo PDF…');
+  let pdfTimer = startBtnTimer(btn, 'Đang tạo PDF');
+  toast('AI đang chỉnh sửa → LaTeX → compile PDF…');
   try {
     const res = await fetch(buildApiUrl(LATEX_API,'/pdf'),{
       method:'POST',
@@ -1422,9 +2132,20 @@ async function downloadPdf(evt){
   } catch(e){
     toast('Lỗi: '+e.message);
   } finally {
+    clearBtnTimer(pdfTimer);
     clearButtonLoading(btn);
   }
 }
+
+function startBtnTimer(btn, label){
+  if(!btn) return null;
+  const t0=Date.now();
+  return setInterval(()=>{
+    const s=((Date.now()-t0)/1000).toFixed(0);
+    btn.textContent=`⏳ ${label}… ${s}s`;
+  },500);
+}
+function clearBtnTimer(id){ if(id) clearInterval(id); }
 
 // ── Utils ──────────────────────────────────────────────────────────────────
 function esc(t){ return(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -1433,6 +2154,8 @@ function toast(msg){
   const el=$('toast'); el.textContent=msg; el.classList.add('show');
   clearTimeout(toastTmr); toastTmr=setTimeout(()=>el.classList.remove('show'),2400);
 }
+
+initResizablePanels();
 </script>
 </body>
 </html>

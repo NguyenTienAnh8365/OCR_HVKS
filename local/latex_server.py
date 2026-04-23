@@ -1,3 +1,4 @@
+import os
 import re
 import time
 import json
@@ -6,6 +7,7 @@ import shutil
 import asyncio
 import tempfile
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional
 
@@ -18,6 +20,11 @@ from sse_starlette.sse import EventSourceResponse
 
 from config import LATEX_PORT, DEBUG_DIR, MODEL_NAME, VLLM_BASE_URL
 import vllm_client
+
+
+LATEX_CHUNK_WORKERS = int(os.environ.get("LATEX_CHUNK_WORKERS", 4))
+LATEX_PAGES_PER_CHUNK = int(os.environ.get("LATEX_PAGES_PER_CHUNK", 4))
+PAGE_MARKER_RE = re.compile(r"(?m)^\s*---\s*Trang\s+(\d+)\s*---\s*$")
 
 
 SYSTEM_PROMPT = (
@@ -239,6 +246,10 @@ def normalize_ocr_input(text: str) -> str:
             flush()
             continue
 
+        if _STANDALONE_PAGE_RE.match(line):
+            flush()
+            continue
+
         starts_block = (
             _ROMAN_SECTION_RE.match(line)
             or _NUMBERED_ITEM_RE.match(line)
@@ -264,9 +275,52 @@ def build_full_tex(body: str) -> str:
     return LATEX_PREAMBLE + body.strip() + LATEX_POSTAMBLE
 
 
-def build_latex_request(user_text: str) -> str:
+def split_ocr_by_page(text: str, pages_per_chunk: int = LATEX_PAGES_PER_CHUNK):
+    """Split OCR text by '--- Trang N ---' markers, then pack `pages_per_chunk`
+    pages into one chunk. Returns list of (chunk_text, [page_nums])."""
+    if not text or not text.strip():
+        return []
+
+    matches = list(PAGE_MARKER_RE.finditer(text))
+    if not matches:
+        return [(text.strip(), [1])]
+
+    pages = []
+    if matches[0].start() > 0:
+        prefix = text[: matches[0].start()].strip()
+        if prefix:
+            pages.append((0, prefix))
+    for i, m in enumerate(matches):
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        body = text[start:end].strip()
+        if body:
+            pages.append((int(m.group(1)), body))
+
+    if not pages:
+        return []
+
+    n = max(1, pages_per_chunk)
+    chunks = []
+    for i in range(0, len(pages), n):
+        group = pages[i:i + n]
+        chunk_text = "\n\n".join(body for _, body in group)
+        chunks.append((chunk_text, [pnum for pnum, _ in group]))
+    return chunks
+
+
+def build_latex_request(user_text: str, *, is_continuation: bool = False) -> str:
+    prefix = ""
+    if is_continuation:
+        prefix = (
+            "LƯU Ý: Đây là PHẦN TIẾP THEO của tài liệu, KHÔNG phải phần đầu.\n"
+            "- KHÔNG tự thêm quốc hiệu, tiêu ngữ, tiêu đề 'BẢN ÁN'/'QUYẾT ĐỊNH'/'CÁO TRẠNG' nếu phần OCR dưới đây không có.\n"
+            "- KHÔNG dùng \\headerpair cho khối tiêu đề quốc gia nếu phần này không chứa nó.\n"
+            "- Chỉ render đúng những gì OCR bên dưới có, coi như phần tiếp nối liền mạch.\n\n"
+        )
     return (
-        "Chuyển đoạn OCR sau thành LaTeX hợp lệ, biên dịch được và giữ bố cục form pháp lý.\n"
+        prefix
+        + "Chuyển đoạn OCR sau thành LaTeX hợp lệ, biên dịch được và giữ bố cục form pháp lý.\n"
         "Lưu ý:\n"
         "- Ưu tiên form gốc hơn là chia section.\n"
         "- Dòng điền chỗ trống phải dùng \\dotfill, \\underline{\\hspace{...}} hoặc \\rule, không dùng '....'.\n"
@@ -349,11 +403,12 @@ def save_extra_debug(debug_id: str, suffix: str, content: str):
         print("save_extra_debug err:", e)
 
 
-def call_llm(user_text: str, *, stream: bool = False, max_tokens: int = 16384):
+def call_llm(user_text: str, *, stream: bool = False, max_tokens: int = 16384,
+             is_continuation: bool = False):
     normalized_input = normalize_ocr_input(user_text)
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": build_latex_request(normalized_input)},
+        {"role": "user", "content": build_latex_request(normalized_input, is_continuation=is_continuation)},
     ]
     return vllm_client.chat(
         messages,
@@ -365,7 +420,8 @@ def call_llm(user_text: str, *, stream: bool = False, max_tokens: int = 16384):
     )
 
 
-def generate_latex_body(user_text: str, *, max_tokens: int = 16384, retries: int = 2):
+def generate_latex_body_single(user_text: str, *, max_tokens: int = 16384,
+                               retries: int = 2, is_continuation: bool = False):
     last_status = None
     last_detail = "unknown"
     last_raw = ""
@@ -373,7 +429,8 @@ def generate_latex_body(user_text: str, *, max_tokens: int = 16384, retries: int
 
     for attempt in range(retries + 1):
         try:
-            r = call_llm(user_text, stream=False, max_tokens=max_tokens)
+            r = call_llm(user_text, stream=False, max_tokens=max_tokens,
+                         is_continuation=is_continuation)
             last_status = r.status_code
             if r.status_code != 200:
                 last_detail = f"vLLM error {r.status_code}: {r.text[:500]}"
@@ -388,7 +445,7 @@ def generate_latex_body(user_text: str, *, max_tokens: int = 16384, retries: int
                 if last_body.strip() and finish_reason != "length":
                     return last_raw, last_body
                 if finish_reason == "length" and attempt == retries:
-                    last_detail = f"Output bị cắt (finish_reason=length, max_tokens={max_tokens}). Tăng max_tokens hoặc chia nhỏ input. raw_len={len(last_raw)}"
+                    last_detail = f"Output bị cắt (finish_reason=length, max_tokens={max_tokens}). raw_len={len(last_raw)}"
                 elif not last_body.strip():
                     last_detail = f"LLM trả về rỗng sau khi strip. raw_head={last_raw[:400]!r}"
         except Exception as e:
@@ -399,6 +456,49 @@ def generate_latex_body(user_text: str, *, max_tokens: int = 16384, retries: int
 
     status_code = 422 if last_status == 200 else 502
     raise HTTPException(status_code=status_code, detail=last_detail)
+
+
+def generate_latex_body(user_text: str, *, max_tokens: int = 16384, retries: int = 2,
+                        max_workers: int = LATEX_CHUNK_WORKERS):
+    """Split OCR input per page and generate LaTeX in parallel. 1 page = 1 request."""
+    chunks = split_ocr_by_page(user_text)
+    if not chunks:
+        raise HTTPException(400, "text rỗng sau khi tách trang")
+
+    if len(chunks) == 1:
+        return generate_latex_body_single(
+            chunks[0][0], max_tokens=max_tokens, retries=retries, is_continuation=False
+        )
+
+    print(
+        f"[latex] chunks={len(chunks)} · workers={max_workers} · "
+        f"pages_per_chunk={LATEX_PAGES_PER_CHUNK} · groups={[p for _, p in chunks]}",
+        flush=True,
+    )
+
+    raws = [None] * len(chunks)
+    bodies = [None] * len(chunks)
+
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(chunks))) as pool:
+        fut_to_idx = {
+            pool.submit(
+                generate_latex_body_single,
+                chunk_text,
+                max_tokens=max_tokens,
+                retries=retries,
+                is_continuation=(i > 0),
+            ): i
+            for i, (chunk_text, _pnums) in enumerate(chunks)
+        }
+        for fut in as_completed(fut_to_idx):
+            idx = fut_to_idx[fut]
+            raw, body = fut.result()
+            raws[idx] = raw
+            bodies[idx] = body
+
+    raw_joined = "\n\n%%%%% PAGE %%%%%\n\n".join(r or "" for r in raws)
+    body_joined = "\n\n".join(b.strip() for b in bodies if b and b.strip())
+    return raw_joined, body_joined
 
 
 def repair_latex_body(body: str, compile_error: str, *, max_tokens: int = 8192):
