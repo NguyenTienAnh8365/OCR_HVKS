@@ -28,7 +28,6 @@ DTYPE="${DTYPE:-bfloat16}"
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
 export HF_HOME="${HF_HOME:-$HOME/model/qwen3.6-35B-A3B}"
 export HF_HUB_ENABLE_HF_TRANSFER="${HF_HUB_ENABLE_HF_TRANSFER:-1}"
-export VLLM_USE_FLASHINFER_MOE=0
 
 echo "[vllm] model=${MODEL_NAME} tp=${TP_SIZE} port=${VLLM_PORT}"
 echo "[vllm] gpus=${CUDA_VISIBLE_DEVICES} gpu_mem=${GPU_MEMORY_UTILIZATION} ctx=${MAX_MODEL_LEN}"
