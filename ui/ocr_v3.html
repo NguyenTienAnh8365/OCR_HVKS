@@ -1150,7 +1150,7 @@ async function checkHealth() {
 }
 setStatus('loading','Đang kết nối…');
 checkHealth();
-healthPoll = setInterval(checkHealth, 8000);
+healthPoll = setInterval(checkHealth, 300000);
 
 // ── File management ────────────────────────────────────────────────────────
 const dz=$('dropzone'), fi=$('file-input');
