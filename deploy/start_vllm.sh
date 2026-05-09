@@ -46,5 +46,4 @@ exec vllm serve "${MODEL_NAME}" \
   --dtype "${DTYPE}" \
   --enable-prefix-caching \
   --enable-chunked-prefill \
-  --enforce-eager \
   --trust-remote-code
