@@ -26,7 +26,7 @@ KV_CACHE_DTYPE="${KV_CACHE_DTYPE:-fp8_e5m2}"
 DTYPE="${DTYPE:-bfloat16}"
 
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
-export HF_HOME="${HF_HOME:-$HOME/model/qwen3.6}"
+export HF_HOME="${HF_HOME:-$HOME/model/qwen3.6-35B-A3B}"
 export HF_HUB_ENABLE_HF_TRANSFER="${HF_HUB_ENABLE_HF_TRANSFER:-1}"
 
 echo "[vllm] model=${MODEL_NAME} tp=${TP_SIZE} port=${VLLM_PORT}"
