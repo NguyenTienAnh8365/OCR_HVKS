@@ -41,9 +41,8 @@ exec python -m sglang.launch_server \
   --max-running-requests "${MAX_RUNNING_REQUESTS}" \
   --kv-cache-dtype "${KV_CACHE_DTYPE}" \
   --dtype "${DTYPE}" \
-  --max-num-batched-tokens "${MAX_NUM_BATCHED_TOKENS}" \
-  --chat-template "${CHAT_TEMPLATE}" \
-  --enable-prefix-caching \
   --chunked-prefill-size "${MAX_NUM_BATCHED_TOKENS}" \
+  --chat-template "${CHAT_TEMPLATE}" \
   --attention-backend triton \
+  --enable-mixed-chunk \
   --trust-remote-code
