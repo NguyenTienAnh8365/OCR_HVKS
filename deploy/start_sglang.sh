@@ -45,4 +45,5 @@ exec python -m sglang.launch_server \
   --chat-template "${CHAT_TEMPLATE}" \
   --enable-prefix-caching \
   --chunked-prefill-size "${MAX_NUM_BATCHED_TOKENS}" \
+  --attention-backend triton \
   --trust-remote-code
