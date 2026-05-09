@@ -1,8 +1,8 @@
 # OCR_HVKS — Pipeline OCR & Trích xuất Văn bản Pháp lý
 
 Hệ thống OCR + trích xuất 67 trường + xuất PDF (LaTeX) cho văn bản tố tụng,
-cáo trạng, quyết định, bản án tiếng Việt. Dùng Qwen-VL trên **SGLang** làm LLM
-backend, FastAPI làm orchestration, UI tĩnh HTML.
+cáo trạng, quyết định, bản án tiếng Việt. Dùng Qwen3.6-35B-A3B trên **vLLM**
+làm LLM backend, FastAPI làm orchestration, UI tĩnh HTML.
 
 ## Kiến trúc
 
@@ -26,7 +26,7 @@ backend, FastAPI làm orchestration, UI tĩnh HTML.
             └───────────────────┴────────────────────────┘
                                 │ ocr_hvks.llm.client (HTTP OpenAI-compat)
                                 ▼
-                     SGLang server (Qwen-VL, TP=2)
+                     vLLM server (Qwen3.6-35B-A3B, TP=2)
                        fp8 KV-cache · 2× RTX PRO 6000
 ```
 
@@ -38,7 +38,7 @@ OCR_HVKS/
 │   ├── config.py                # Env + paths
 │   ├── server.py                # uvicorn entrypoint
 │   ├── llm/
-│   │   └── client.py            # HTTP client → SGLang /v1/chat/completions
+│   │   └── client.py            # HTTP client → OpenAI-compatible /v1/chat/completions
 │   ├── ocr/
 │   │   ├── router.py            # /ocr, /ocr/stream
 │   │   ├── pipeline.py          # encode + ocr_one_page
@@ -60,10 +60,10 @@ OCR_HVKS/
 │
 ├── deploy/
 │   ├── install_server.sh        # apt + venv + pip install
-│   ├── start_sglang.sh          # khởi động SGLang TP=2
+│   ├── start_vllm.sh            # khởi động vLLM TP=2
 │   ├── start_api.sh             # khởi động uvicorn
 │   ├── start_cloudflared.sh     # quick tunnel ra trycloudflare.com
-│   └── systemd/                 # 3 unit file: sglang / api / tunnel
+│   └── systemd/                 # 3 unit file: vllm / api / tunnel
 │
 ├── ui/
 │   └── ocr_v3.html              # SPA tĩnh
@@ -73,7 +73,7 @@ OCR_HVKS/
 │   └── ocr_pipeline_v2.svg
 │
 ├── third_party/
-│   └── deepdoc_vietocr/         # OCR offline thay thế (không dùng SGLang)
+│   └── deepdoc_vietocr/         # OCR offline thay thế (không dùng LLM backend)
 │
 ├── pyproject.toml
 ├── requirements.txt
@@ -92,16 +92,16 @@ git clone <repo> /opt/ocr_hvks && cd /opt/ocr_hvks
 # 2. cài system deps + venv + python deps
 ./deploy/install_server.sh
 
-# 3. cài SGLang trong venv (theo CUDA của server, xem docs.sglang.ai)
+# 3. cài vLLM trong venv (theo CUDA của server, xem docs.vllm.ai)
 . .venv/bin/activate
-pip install "sglang[all]"
+pip install vllm
 
 # 4. cấu hình
 cp .env.example .env
 nano .env                        # đổi MODEL_NAME, TP_SIZE nếu cần
 
 # 5. test thủ công (2 terminal)
-./deploy/start_sglang.sh         # terminal 1 — đợi "server is ready"
+./deploy/start_vllm.sh           # terminal 1 — đợi server ready
 ./deploy/start_api.sh            # terminal 2
 
 # 6. health check
@@ -142,7 +142,7 @@ ui/ocr_v3.html?api=https://xxx-xxx-xxx.trycloudflare.com
 ### OCR
 1. UI POST `/ocr/stream` (multipart).
 2. `pdf_loader.load_images_from_bytes` tách PDF → ảnh (poppler, DPI=300).
-3. `ocr_one_page` chạy song song `MAX_WORKERS` trang → SGLang Qwen-VL.
+3. `ocr_one_page` chạy song song `MAX_WORKERS` trang → vLLM OpenAI-compatible.
 4. Stream SSE từng trang về UI.
 
 ### Trích xuất trường
@@ -165,12 +165,12 @@ Xem [.env.example](.env.example) cho danh sách đầy đủ. Các biến quan t
 
 | Var | Default | Mô tả |
 |-----|---------|-------|
-| `MODEL_NAME` | `Qwen/Qwen3.6-27B` | Model SGLang phục vụ |
-| `LLM_BASE_URL` | `http://localhost:8008` | URL SGLang (OpenAI-compat) |
+| `MODEL_NAME` | `Qwen/Qwen3.6-35B-A3B` | Model vLLM phục vụ |
+| `LLM_BASE_URL` | `http://localhost:8008` | URL vLLM (OpenAI-compatible) |
 | `API_PORT` | `8900` | FastAPI combined |
-| `TP_SIZE` | `2` | Tensor parallel cho SGLang |
-| `MEM_FRACTION_STATIC` | `0.88` | GPU mem cho SGLang |
-| `CONTEXT_LENGTH` | `100000` | Context length |
+| `TP_SIZE` | `2` | Tensor parallel cho vLLM |
+| `GPU_MEMORY_UTILIZATION` | `0.90` | GPU memory utilization cho vLLM |
+| `MAX_MODEL_LEN` | `100000` | Context length |
 | `MAX_WORKERS` | `32` | OCR song song (trang) |
 | `LATEX_PAGES_PER_CHUNK` | `4` | Trang/request LaTeX |
 | `LATEX_CHUNK_WORKERS` | `4` | Request LaTeX song song |
@@ -192,11 +192,11 @@ Server parse lúc startup → ép schema cố định cho mọi response.
 
 ## Troubleshooting
 
-**SGLang không khởi động được**
+**vLLM không khởi động được**
 - Kiểm tra `nvidia-smi` đảm bảo 2 GPU còn trống.
-- Hạ `MEM_FRACTION_STATIC=0.85` nếu OOM.
+- Hạ `GPU_MEMORY_UTILIZATION=0.85` nếu OOM.
 - `CUDA_VISIBLE_DEVICES=0,1` đúng index GPU.
-- Xem log: `journalctl -u sglang@$USER.service -f` hoặc `cloudflared.log`.
+- Xem log: `journalctl -u vllm@$USER.service -f`.
 
 **Tunnel cloudflared 503**
 - Chờ ~4 phút để cloudflared reconnect, hoặc restart `ocr-hvks-tunnel@$USER.service`.
@@ -225,7 +225,7 @@ python -m venv .venv
 .\.venv\Scripts\activate
 pip install -r requirements.txt
 pip install -e .
-# SGLang trên Linux/CUDA — ở Windows có thể dùng tunnel ngược tới SGLang trên server
+# vLLM trên Linux/CUDA — ở Windows có thể dùng tunnel ngược tới vLLM trên server
 $env:LLM_BASE_URL = "https://xxx.trycloudflare.com"
 ocr-hvks-server
 ```

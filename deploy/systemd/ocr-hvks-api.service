@@ -1,14 +1,14 @@
 [Unit]
 Description=OCR_HVKS combined FastAPI (OCR + Extract + LaTeX)
-After=network-online.target sglang.service
-Wants=network-online.target
+After=network-online.target vllm@%i.service
+Wants=network-online.target vllm@%i.service
 
 [Service]
 Type=simple
 User=%i
 WorkingDirectory=/opt/ocr_hvks
 EnvironmentFile=-/opt/ocr_hvks/.env
-ExecStart=/opt/ocr_hvks/.venv/bin/bash /opt/ocr_hvks/deploy/start_api.sh
+ExecStart=/usr/bin/env bash /opt/ocr_hvks/deploy/start_api.sh
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal

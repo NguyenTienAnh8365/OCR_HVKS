@@ -1,7 +1,7 @@
-"""Wrapper gọi LLM qua HTTP OpenAI-compatible (SGLang).
+"""Wrapper gọi LLM qua HTTP OpenAI-compatible.
 
-SGLang server expose `/v1/chat/completions` và `/v1/models` y hệt OpenAI/vLLM,
-nên client này chạy được với cả SGLang lẫn vLLM, chỉ cần đổi `LLM_BASE_URL`.
+Backend expose `/v1/chat/completions` và `/v1/models` theo OpenAI-compatible API,
+nên client này không phụ thuộc engine cụ thể, chỉ cần đổi `LLM_BASE_URL`.
 """
 
 import requests

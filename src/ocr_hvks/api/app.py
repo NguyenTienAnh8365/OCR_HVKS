@@ -42,3 +42,7 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+# run
+# chmod +x deploy/*.sh && ./deploy/start_vllm.sh
+# chmod +x deploy/*.sh && ./deploy/start_api.sh

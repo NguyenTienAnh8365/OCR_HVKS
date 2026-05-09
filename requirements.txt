@@ -13,4 +13,6 @@ python-dotenv
 # sudo apt install -y texlive-xetex texlive-fonts-recommended texlive-fonts-extra
 
 # LLM backend (cài riêng theo CUDA — xem deploy/install_server.sh):
-#   pip install "sglang[all]"
+#   pip install vllm
+
+# sudo apt install -y poppler-utils
