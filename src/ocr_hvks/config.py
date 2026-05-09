@@ -13,7 +13,7 @@ load_dotenv(REPO_ROOT / ".env")
 # ---------- LLM (SGLang OpenAI-compatible) ----------
 LLM_BASE_URL = os.environ.get(
     "LLM_BASE_URL",
-    os.environ.get("SGLANG_BASE_URL", "http://localhost:8008"),
+    os.environ.get("SGLANG_BASE_URL", "http://100.75.29.73:8008"),
 ).rstrip("/")
 LLM_CHAT_URL = f"{LLM_BASE_URL}/v1/chat/completions"
 LLM_MODELS_URL = f"{LLM_BASE_URL}/v1/models"
