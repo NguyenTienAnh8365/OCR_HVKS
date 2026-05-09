@@ -165,7 +165,7 @@ Xem [.env.example](.env.example) cho danh sách đầy đủ. Các biến quan t
 
 | Var | Default | Mô tả |
 |-----|---------|-------|
-| `MODEL_NAME` | `Qwen/Qwen3-VL-30B-A3B-Instruct` | Model SGLang phục vụ |
+| `MODEL_NAME` | `Qwen/Qwen3.6-27B` | Model SGLang phục vụ |
 | `LLM_BASE_URL` | `http://localhost:8008` | URL SGLang (OpenAI-compat) |
 | `API_PORT` | `8900` | FastAPI combined |
 | `TP_SIZE` | `2` | Tensor parallel cho SGLang |

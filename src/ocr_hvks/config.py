@@ -17,7 +17,7 @@ LLM_BASE_URL = os.environ.get(
 ).rstrip("/")
 LLM_CHAT_URL = f"{LLM_BASE_URL}/v1/chat/completions"
 LLM_MODELS_URL = f"{LLM_BASE_URL}/v1/models"
-MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen3-VL-30B-A3B-Instruct")
+MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen3.6-27B")
 
 # Headers gửi kèm khi LLM nằm sau cloudflared/localtunnel.
 TUNNEL_HEADERS = {

@@ -3,7 +3,7 @@
 #
 # Mặc định chạy 2 GPU (TP=2) cho 2x RTX PRO 6000 Blackwell (~96GB mỗi GPU).
 # Override qua biến môi trường, ví dụ:
-#   MODEL_NAME=Qwen/Qwen3-VL-30B-A3B-Instruct TP_SIZE=2 ./deploy/start_sglang.sh
+#   MODEL_NAME=Qwen/Qwen3.6-27B TP_SIZE=2 ./deploy/start_sglang.sh
 
 set -euo pipefail
 
@@ -13,7 +13,7 @@ if [[ -f "${ENV_FILE}" ]]; then
   set -a; . "${ENV_FILE}"; set +a
 fi
 
-MODEL_NAME="${MODEL_NAME:-Qwen/Qwen3-VL-30B-A3B-Instruct}"
+MODEL_NAME="${MODEL_NAME:-Qwen/Qwen3.6-27B}"
 SGLANG_PORT="${SGLANG_PORT:-8008}"
 SGLANG_HOST="${SGLANG_HOST:-0.0.0.0}"
 TP_SIZE="${TP_SIZE:-2}"
