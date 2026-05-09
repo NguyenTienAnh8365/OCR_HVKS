@@ -850,8 +850,8 @@ button.cta:hover { opacity:.93; }
 
 <script>
 // Keep in sync with colab/run_local_src.py default SUBDOMAIN.
-const UI_DEFAULT_OCR_API = ' https://cabinets-fruit-mainstream-karma.trycloudflare.com';
-const UI_DEFAULT_LATEX_API = ' https://cabinets-fruit-mainstream-karma.trycloudflare.com';
+const UI_DEFAULT_OCR_API = 'http://100.75.29.73:8900';
+const UI_DEFAULT_LATEX_API = 'http://100.75.29.73:8900';
 const urlParams = new URLSearchParams(window.location.search);
 const queryApi = (urlParams.get('api') || '').trim().replace(/\/+$/,'');
 const queryOcrApi = (urlParams.get('ocr_api') || '').trim().replace(/\/+$/,'');
@@ -1117,8 +1117,8 @@ async function pingHealth(url){
 let healthFailStreak = 0;
 async function checkHealth() {
   const [ocr, latex] = await Promise.all([pingHealth(OCR_API), pingHealth(LATEX_API)]);
-  const ocrOk   = ocr && ocr.vllm==='ready';
-  const latexOk = latex && latex.vllm==='ready';
+  const ocrOk   = ocr && (ocr.llm==='ready' || ocr.vllm==='ready');
+  const latexOk = latex && (latex.llm==='ready' || latex.vllm==='ready');
   const pdfOk   = latexOk && latex.xelatex;
   if (ocr!==null || latex!==null) { healthFailStreak = 0; }
   else { healthFailStreak += 1; }
