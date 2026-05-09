@@ -1,0 +1,18 @@
+[Unit]
+Description=Cloudflared quick tunnel for OCR_HVKS API
+After=network-online.target ocr-hvks-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/opt/ocr_hvks
+EnvironmentFile=-/opt/ocr_hvks/.env
+ExecStart=/usr/bin/env bash /opt/ocr_hvks/deploy/start_cloudflared.sh
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

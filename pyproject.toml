@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ocr_hvks"
+version = "3.0.0"
+description = "OCR + trích xuất + LaTeX cho văn bản pháp lý tiếng Việt (Qwen-VL on SGLang)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "python-multipart",
+  "aiofiles",
+  "sse-starlette",
+  "requests",
+  "pydantic>=2",
+  "pdf2image",
+  "Pillow",
+  "python-dotenv",
+]
+
+[project.scripts]
+ocr-hvks-server = "ocr_hvks.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"ocr_hvks.extract" = ["schemas/*.md"]

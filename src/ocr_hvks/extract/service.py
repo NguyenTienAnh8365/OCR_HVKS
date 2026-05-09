@@ -1,15 +1,15 @@
+"""Trích xuất 4 nhóm trường từ văn bản OCR — chạy song song mỗi nhóm 1 LLM call."""
+
 import json
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from fastapi import APIRouter, Body, HTTPException
-
-import vllm_client
+from ocr_hvks.llm import client as llm_client
 
 
-EXTRACT_MD_DIR = Path(__file__).parent / "extract_md"
+SCHEMAS_DIR = Path(__file__).parent / "schemas"
+
 _FIELD_ROW_RE = re.compile(
     r"^\s*\|\s*\d+\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*(Col\s+\d+)\s*\|\s*([^|]*?)\s*\|\s*$"
 )
@@ -17,8 +17,8 @@ _JSON_BLOCK_RE = re.compile(r"\{[\s\S]*\}")
 _CODE_FENCE_RE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.IGNORECASE | re.MULTILINE)
 
 
-def _parse_fields_from_md(md_path: Path):
-    fields = []
+def _parse_fields_from_md(md_path: Path) -> list[dict]:
+    fields: list[dict] = []
     for line in md_path.read_text(encoding="utf-8").splitlines():
         match = _FIELD_ROW_RE.match(line)
         if not match:
@@ -33,11 +33,11 @@ def _parse_fields_from_md(md_path: Path):
     return fields
 
 
-def _load_extract_groups():
-    groups = []
-    if not EXTRACT_MD_DIR.exists():
+def _load_extract_groups() -> list[dict]:
+    groups: list[dict] = []
+    if not SCHEMAS_DIR.exists():
         return groups
-    for md_path in sorted(EXTRACT_MD_DIR.glob("*.md")):
+    for md_path in sorted(SCHEMAS_DIR.glob("*.md")):
         fields = _parse_fields_from_md(md_path)
         if not fields:
             continue
@@ -53,6 +53,7 @@ def _load_extract_groups():
     return groups
 
 
+# Load tại import-time như bản cũ — schema cố định trong vòng đời server.
 EXTRACT_GROUPS = _load_extract_groups()
 
 
@@ -99,7 +100,7 @@ def _parse_json_response(text: str) -> dict:
         return {}
 
 
-def _extract_one_group(group: dict, ocr_text: str) -> dict:
+def extract_one_group(group: dict, ocr_text: str) -> dict:
     started = time.time()
     prompt = _build_prompt(group, ocr_text)
     messages = [{"role": "user", "content": prompt}]
@@ -109,7 +110,7 @@ def _extract_one_group(group: dict, ocr_text: str) -> dict:
     ok = False
     for attempt in range(3):
         try:
-            response = vllm_client.chat(
+            response = llm_client.chat(
                 messages,
                 max_tokens=4096,
                 temperature=0.0,
@@ -150,56 +151,4 @@ def _extract_one_group(group: dict, ocr_text: str) -> dict:
         "error": None if ok else last_err,
         "time_s": round(time.time() - started, 2),
         "fields": fields_out,
-    }
-
-
-router = APIRouter()
-
-
-@router.get("/extract/schema")
-def extract_schema():
-    return {
-        "groups": [
-            {
-                "id": g["id"],
-                "name": g["name"],
-                "file": g["file"],
-                "fields": g["fields"],
-            }
-            for g in EXTRACT_GROUPS
-        ]
-    }
-
-
-@router.post("/extract")
-def extract(payload: dict = Body(...)):
-    text = (payload or {}).get("text", "")
-    if not isinstance(text, str) or not text.strip():
-        raise HTTPException(status_code=400, detail="Missing 'text' in request body")
-    if not EXTRACT_GROUPS:
-        raise HTTPException(status_code=500, detail="No extract_md groups loaded")
-
-    started = time.time()
-    results: dict = {}
-    with ThreadPoolExecutor(max_workers=len(EXTRACT_GROUPS)) as executor:
-        futures = {
-            executor.submit(_extract_one_group, group, text): group["id"]
-            for group in EXTRACT_GROUPS
-        }
-        for future in as_completed(futures):
-            gid = futures[future]
-            try:
-                results[gid] = future.result()
-            except Exception as exc:
-                results[gid] = {
-                    "id": gid,
-                    "ok": False,
-                    "error": f"{type(exc).__name__}: {exc}",
-                    "fields": [],
-                }
-
-    ordered = [results[g["id"]] for g in EXTRACT_GROUPS if g["id"] in results]
-    return {
-        "total_time_s": round(time.time() - started, 2),
-        "groups": ordered,
     }

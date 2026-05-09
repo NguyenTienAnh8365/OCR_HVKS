@@ -1,0 +1,19 @@
+[Unit]
+Description=SGLang server (Qwen-VL) for OCR_HVKS
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/opt/ocr_hvks
+EnvironmentFile=-/opt/ocr_hvks/.env
+ExecStart=/opt/ocr_hvks/.venv/bin/bash /opt/ocr_hvks/deploy/start_sglang.sh
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=600
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,14 +1,21 @@
 # Env
+.env
 local/.env
 
 # Debug output
+debug/
 local/debug_latex/
 local/debug_md/
+cloudflared.log
+tunnel_*.log
 
 # Python
 __pycache__/
 *.pyc
 *.pyo
+*.egg-info/
+build/
+dist/
 .venv/
 venv/
 
