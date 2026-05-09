@@ -43,8 +43,9 @@ CHUNKED_PREFILL_SIZE="${CHUNKED_PREFILL_SIZE:-16384}"
 SCHEDULE_CONSERVATIVENESS="${SCHEDULE_CONSERVATIVENESS:-1.0}"
 
 # ---------- Backend ----------
-# flashinfer | triton | fa3 | torch_native
-ATTENTION_BACKEND="${ATTENTION_BACKEND:-flashinfer}"
+# triton | trtllm_mha | flashinfer | fa3 | torch_native
+# Lưu ý: Qwen3-Next / hybrid GDN models trên Blackwell BẮT BUỘC triton hoặc trtllm_mha.
+ATTENTION_BACKEND="${ATTENTION_BACKEND:-triton}"
 
 # Reasoning parser cho Qwen3 — tách <think>…</think> nếu model emit. Để rỗng để tắt.
 REASONING_PARSER="${REASONING_PARSER:-qwen3}"
