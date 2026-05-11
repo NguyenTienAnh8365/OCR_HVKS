@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 import shutil
 import time
 import uuid
@@ -25,6 +26,8 @@ from ocr_hvks.latex.templates import build_full_tex
 
 
 router = APIRouter()
+
+_DEBUG_ID_RE = re.compile(r"^[a-f0-9]{8}$")
 
 
 class TextIn(BaseModel):
@@ -130,6 +133,8 @@ def compile_only(inp: LaTeXIn):
 
 @router.get("/debug/{debug_id}")
 def debug_get(debug_id: str):
+    if not _DEBUG_ID_RE.match(debug_id):
+        raise HTTPException(400, "debug_id không hợp lệ")
     out = {}
     for suffix in (
         "raw.txt",
@@ -145,7 +150,7 @@ def debug_get(debug_id: str):
         if p.exists():
             try:
                 out[suffix] = p.read_text(encoding="utf-8", errors="ignore")
-            except Exception as e:
+            except OSError as e:
                 out[suffix] = f"<read err: {e}>"
         else:
             out[suffix] = None
@@ -160,7 +165,7 @@ async def latex_stream(inp: TextIn):
         if not inp.text.strip():
             yield {"data": json.dumps({"type": "error", "detail": "text rỗng"})}
             return
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         r = await loop.run_in_executor(
             None,
             lambda: call_llm(inp.text, stream=True, max_tokens=inp.max_tokens or 16384),
@@ -180,7 +185,7 @@ async def latex_stream(inp: TextIn):
                 delta = obj["choices"][0]["delta"].get("content", "")
                 if delta:
                     yield {"data": json.dumps({"type": "delta", "text": delta})}
-            except Exception:
+            except (json.JSONDecodeError, KeyError, IndexError):
                 continue
         yield {"data": json.dumps({"type": "done"})}
 

@@ -89,14 +89,14 @@ def _parse_json_response(text: str) -> dict:
     cleaned = _CODE_FENCE_RE.sub("", text).strip()
     try:
         return json.loads(cleaned)
-    except Exception:
+    except json.JSONDecodeError:
         pass
     match = _JSON_BLOCK_RE.search(cleaned)
     if not match:
         return {}
     try:
         return json.loads(match.group(0))
-    except Exception:
+    except json.JSONDecodeError:
         return {}
 
 

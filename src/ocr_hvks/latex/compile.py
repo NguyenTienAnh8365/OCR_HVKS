@@ -39,13 +39,13 @@ def compile_pdf(tex_source: str, engine: str = "xelatex",
         if log_file.exists():
             try:
                 log_txt = log_file.read_text(encoding="utf-8", errors="ignore")
-            except Exception:
-                pass
+            except OSError as e:
+                print(f"compile_pdf: could not read log: {e}")
         if debug_id:
             try:
                 (DEBUG_DIR / f"{debug_id}.log").write_text(log_txt, encoding="utf-8")
-            except Exception:
-                pass
+            except OSError as e:
+                print(f"compile_pdf: could not write debug log: {e}")
         if not pdf_file.exists():
             raise HTTPException(
                 status_code=500,

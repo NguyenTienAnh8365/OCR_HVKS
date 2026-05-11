@@ -20,6 +20,13 @@ from ocr_hvks.ocr.pipeline import encode_pil, ocr_one_page
 
 router = APIRouter()
 
+_ALLOWED_EXTENSIONS = (".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp")
+
+
+def _validate_file_ext(fname: str) -> None:
+    if not any(fname.lower().endswith(ext) for ext in _ALLOWED_EXTENSIONS):
+        raise HTTPException(status_code=400, detail="Chỉ chấp nhận PDF hoặc ảnh (PNG, JPG, TIFF, BMP, WEBP).")
+
 
 def health() -> dict:
     pdfinfo_path = resolve_pdfinfo()
@@ -53,8 +60,10 @@ def health() -> dict:
 
 @router.post("/ocr")
 async def ocr_sync(file: UploadFile = File(...)):
-    data = await file.read()
     fname = file.filename or "upload"
+    if not any(fname.lower().endswith(ext) for ext in _ALLOWED_EXTENSIONS):
+        raise HTTPException(status_code=400, detail="Chỉ chấp nhận PDF hoặc ảnh (PNG, JPG, TIFF, BMP, WEBP).")
+    data = await file.read()
     try:
         pages = load_images_from_bytes(data, fname)
     except Exception as exc:
@@ -65,7 +74,7 @@ async def ocr_sync(file: UploadFile = File(...)):
     started_at = time.time()
     results = []
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, total)) as executor:
         futures = [executor.submit(ocr_one_page, *job) for job in work]
         tasks = [loop.run_in_executor(None, lambda future=future: future.result()) for future in futures]
@@ -84,8 +93,10 @@ async def ocr_sync(file: UploadFile = File(...)):
 
 @router.post("/ocr/stream")
 async def ocr_stream(file: UploadFile = File(...)):
-    data = await file.read()
     fname = file.filename or "upload"
+    if not any(fname.lower().endswith(ext) for ext in _ALLOWED_EXTENSIONS):
+        raise HTTPException(status_code=400, detail="Chỉ chấp nhận PDF hoặc ảnh (PNG, JPG, TIFF, BMP, WEBP).")
+    data = await file.read()
 
     async def event_generator():
         try:
@@ -109,7 +120,7 @@ async def ocr_stream(file: UploadFile = File(...)):
         started_at = time.time()
         work = [(encode_pil(img), pnum, total, fname) for pnum, img in pages]
         queue: asyncio.Queue = asyncio.Queue()
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def run_and_queue(args):
             result = ocr_one_page(*args)

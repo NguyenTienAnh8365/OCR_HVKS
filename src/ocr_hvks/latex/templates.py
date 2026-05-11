@@ -61,4 +61,9 @@ LATEX_POSTAMBLE = "\n\\end{document}\n"
 
 
 def build_full_tex(body: str) -> str:
+    """Wrap LaTeX body với preamble/postamble. Body phải là LaTeX hợp lệ từ LLM pipeline,
+    không phải HTML — không cần HTML escaping.
+    """
+    if not isinstance(body, str):
+        raise TypeError("body phải là str")
     return LATEX_PREAMBLE + body.strip() + LATEX_POSTAMBLE
