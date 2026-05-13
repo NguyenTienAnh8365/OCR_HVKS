@@ -1422,7 +1422,20 @@ async function runOCR(evt) {
   if(!pending.length){ toast('Chọn file cần OCR trước'); return; }
   $('run-btn').disabled=true;
   try {
-    for(const f of pending) await processFile(f);
+    // Song song hóa: tối đa N file cùng lúc trong 1 tab.
+    // Mỗi worker liên tục lấy file từ queue cho đến khi rỗng.
+    const CONCURRENT_FILES = 8;
+    const queue = [...pending];
+    const workers = Array.from(
+      {length: Math.min(CONCURRENT_FILES, queue.length)},
+      async () => {
+        while (queue.length) {
+          const f = queue.shift();
+          if (f) await processFile(f);
+        }
+      }
+    );
+    await Promise.all(workers);
   } finally {
     $('run-btn').disabled=false;
     $('prog-wrap').style.display='none';
