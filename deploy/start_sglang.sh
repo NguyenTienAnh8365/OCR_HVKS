@@ -41,4 +41,6 @@ exec python -m sglang.launch_server \
   --chat-template "${CHAT_TEMPLATE}" \
   --attention-backend triton \
   --enable-mixed-chunk \
+  --enable-torch-compile \
+  --schedule-conservativeness 1.3\
   --trust-remote-code

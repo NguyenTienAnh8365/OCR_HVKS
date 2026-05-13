@@ -19,7 +19,7 @@ _CODE_FENCE_RE = re.compile(
 
 def encode_pil(img: Image.Image) -> str:
     buf = BytesIO()
-    img.convert("RGB").save(buf, format="JPEG", quality=95)
+    img.convert("RGB").save(buf, format="JPEG", quality=90)
     return base64.b64encode(buf.getvalue()).decode()
 
 
@@ -56,11 +56,11 @@ def ocr_one_page(b64: str, page_num: int, total: int, fname: str) -> dict:
         try:
             response = llm_client.chat(
                 messages,
-                max_tokens=8192,
+                max_tokens=6000,
                 temperature=0.05,
                 extra={
                     "top_p": 0.8,
-                    "repetition_penalty": 1.03,
+                    # "repetition_penalty": 1.03,
                     "frequency_penalty": 0.0,
                 },
                 timeout=300,
