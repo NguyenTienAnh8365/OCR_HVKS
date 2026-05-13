@@ -17,9 +17,19 @@ _CODE_FENCE_RE = re.compile(
 )
 
 
-def encode_pil(img: Image.Image) -> str:
+def encode_pil(img: Image.Image, max_side: int = 1568) -> str:
+    """Encode PIL → base64 JPEG. Cap max(W, H) ≤ max_side để giảm visual tokens.
+
+    Qwen-VL patch grid native ~1568 px; vượt ngưỡng này model tự down-sample,
+    nên resize trước tiết kiệm bytes truyền + visual tokens prefill.
+    """
+    img = img.convert("RGB")
+    w, h = img.size
+    if max(w, h) > max_side:
+        scale = max_side / max(w, h)
+        img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
     buf = BytesIO()
-    img.convert("RGB").save(buf, format="JPEG", quality=90)
+    img.save(buf, format="JPEG", quality=85)
     return base64.b64encode(buf.getvalue()).decode()
 
 
