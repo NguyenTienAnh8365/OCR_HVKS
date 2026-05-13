@@ -114,10 +114,66 @@ body.is-resizing * {
   flex-shrink: 0;
   display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
 }
-.logo-eyebrow { font-family:var(--mono); font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--jade); margin-bottom:1px; }
-.logo-title { font-size:22px; font-weight:600; letter-spacing:-.6px; color:var(--text); line-height:1; }
-.logo-sub   { font-size:10px; color:var(--text3); letter-spacing:.02em; margin-top:3px; }
-.logo-title span { color:var(--text3); font-weight:300; }
+.logo-lockup {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.logo-mark {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #1a8067 0%, #0f5f51 58%, #10473f 100%);
+  border: 1px solid rgba(255,255,255,.72);
+  box-shadow: 0 12px 24px rgba(21,122,98,.18), inset 0 0 0 1px rgba(255,255,255,.16);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.logo-mark svg { width: 34px; height: 34px; display: block; }
+.logo-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.logo-topline {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.logo-title {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: .045em;
+  color: var(--text);
+  line-height: .96;
+}
+.logo-chip {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--jade);
+  padding: 2px 6px 3px;
+  border: 1px solid rgba(21,122,98,.18);
+  border-radius: 999px;
+  background: rgba(21,122,98,.07);
+  white-space: nowrap;
+}
+.logo-sub {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text3);
+  letter-spacing: .01em;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .status-badge {
   display:inline-flex; align-items:center; gap:6px;
@@ -717,10 +773,21 @@ button.cta:hover { opacity:.93; }
   <div class="left-panel panel-shell">
 
     <div class="lp-head">
-      <div>
-        <div class="logo-eyebrow">Hệ thống AI-OCR</div>
-        <div class="logo-title">VKS</div>
-        <div class="logo-sub">Các văn bản cáo trạng, tố tụng, hình sự</div>
+      <div class="logo-lockup" aria-label="VKS AI-OCR">
+        <div class="logo-mark" aria-hidden="true">
+          <svg viewBox="0 0 48 48" role="img">
+            <path d="M24 7.8 36.5 12v9.3c0 8.6-5.1 15-12.5 18.9-7.4-3.9-12.5-10.3-12.5-18.9V12L24 7.8Z" fill="rgba(255,253,248,.94)"/>
+            <path d="M17.7 20.5 22.7 31 31 16.4" fill="none" stroke="#157a62" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M13.5 14.5h21M13.5 34h21" fill="none" stroke="rgba(255,253,248,.72)" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="logo-copy">
+          <div class="logo-topline">
+            <div class="logo-title">VKS</div>
+            <div class="logo-chip">AI-OCR</div>
+          </div>
+          <div class="logo-sub">Cáo trạng · Tố tụng · Hình sự</div>
+        </div>
       </div>
       <div class="status-badge" id="status-badge">
         <div class="status-dot pulse" id="status-dot"></div>
@@ -820,7 +887,7 @@ button.cta:hover { opacity:.93; }
 
       <div class="rv-foot">
         <div class="rv-foot-left" id="rv-foot-left"></div>
-        <div class="rv-foot-warn">⚠ Hệ thống AI-OCR có thể mắc lỗi, hãy cẩn trọng và rà soát lại các thông tin quan trọng trước khi sử dụng</div>
+        <div class="rv-foot-warn">⚠ Hệ thống AI-OCR có thể mắc lỗi, hãy cẩn trọng và rà soát lại các thông tin quan trọng trước khi đưa vào sử dụng</div>
       </div>
 
     </div><!-- /rp-viewer -->
@@ -852,8 +919,8 @@ button.cta:hover { opacity:.93; }
 
 <script>
 // Keep in sync with colab/run_local_src.py default SUBDOMAIN.
-const UI_DEFAULT_OCR_API = 'https://clients-oral-outdoor-builds.trycloudflare.com';
-const UI_DEFAULT_LATEX_API = 'https://clients-oral-outdoor-builds.trycloudflare.com';
+const UI_DEFAULT_OCR_API = 'https://record-publishers-lodging-specialties.trycloudflare.com';
+const UI_DEFAULT_LATEX_API = 'https://record-publishers-lodging-specialties.trycloudflare.com';
 const urlParams = new URLSearchParams(window.location.search);
 const queryApi = (urlParams.get('api') || '').trim().replace(/\/+$/,'');
 const queryOcrApi = (urlParams.get('ocr_api') || '').trim().replace(/\/+$/,'');
