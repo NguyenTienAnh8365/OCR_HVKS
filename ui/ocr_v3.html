@@ -954,6 +954,8 @@ const LAYOUT_STORAGE_KEY = 'hvks_panel_layout_v1';
 
 let files   = [];    // File objects
 let results = {};    // fileKey → { filename, pages, total_time_s, totalPages }
+let batchStartMs = 0;   // wall-clock start của batch OCR hiện tại (Date.now())
+let batchEndMs = 0;     // wall-clock end khi batch xong (0 = đang chạy)
 let extracts = {};   // fileKey → { status: 'idle'|'running'|'done'|'error', data, error, time_s }
 let timers  = {};
 let viewerKey  = null;   // fileKey currently shown in right panel
@@ -1421,6 +1423,8 @@ async function runOCR(evt) {
   const pending=files.filter(f=>f._selected&&!f._ocrDone&&!f._ocrProc);
   if(!pending.length){ toast('Chọn file cần OCR trước'); return; }
   $('run-btn').disabled=true;
+  batchStartMs = Date.now();
+  batchEndMs = 0;
   try {
     // Song song hóa: tối đa N file cùng lúc trong 1 tab.
     // Mỗi worker liên tục lấy file từ queue cho đến khi rỗng.
@@ -1437,6 +1441,7 @@ async function runOCR(evt) {
     );
     await Promise.all(workers);
   } finally {
+    batchEndMs = Date.now();
     $('run-btn').disabled=false;
     $('prog-wrap').style.display='none';
     updateStats();
@@ -1957,7 +1962,15 @@ function updateStats(){
   const all=Object.values(results).filter(r=>r.total_time_s>0);
   if(!all.length){ $('stats-mini').style.display='none'; return; }
   const tp=all.reduce((s,r)=>s+r.pages.length,0);
-  const tt=all.reduce((s,r)=>s+r.total_time_s,0);
+  // Tổng = wall-clock của batch (đúng khi chạy song song nhiều file).
+  // Fallback về sum nếu chưa có batch info (vd load lại trang).
+  let tt;
+  if(batchStartMs > 0){
+    const endMs = batchEndMs || Date.now();
+    tt = (endMs - batchStartMs) / 1000;
+  } else {
+    tt = all.reduce((s,r)=>s+r.total_time_s,0);
+  }
   const av=tp?(tt/tp).toFixed(1):0;
   const er=all.flatMap(r=>r.pages).filter(p=>!p.ok).length;
   $('stats-mini').innerHTML=`
