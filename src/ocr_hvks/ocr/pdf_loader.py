@@ -3,8 +3,9 @@
 import shutil
 from io import BytesIO
 from pathlib import Path
+from typing import Iterator
 
-from pdf2image import convert_from_bytes
+from pdf2image import convert_from_bytes, pdfinfo_from_bytes
 from pdf2image.exceptions import PDFInfoNotInstalledError, PDFPageCountError
 from PIL import Image
 
@@ -50,3 +51,53 @@ def load_images_from_bytes(data: bytes, filename: str) -> list[tuple[int, Image.
 
     image = Image.open(BytesIO(data)).convert("RGB")
     return [(1, image)]
+
+
+def count_pdf_pages(data: bytes, filename: str) -> int:
+    """Trả về số trang PDF (rẻ — chỉ parse header). Ảnh: luôn = 1."""
+    if not filename.lower().endswith(".pdf"):
+        return 1
+    if not resolve_pdfinfo():
+        raise RuntimeError("Missing Poppler/pdfinfo in PATH.")
+    poppler_path = resolve_poppler_path()
+    info = pdfinfo_from_bytes(data, poppler_path=poppler_path) if poppler_path else pdfinfo_from_bytes(data)
+    return int(info["Pages"])
+
+
+def iter_pdf_pages(
+    data: bytes,
+    filename: str,
+    chunk_size: int = 8,
+    thread_count: int = 4,
+) -> Iterator[tuple[int, Image.Image]]:
+    """Lazy generator yield (page_num, PIL) theo từng chunk.
+
+    Khác load_images_from_bytes: không render cả file 1 lần, mà render chunk_size
+    trang một, để caller có thể submit job LLM song song với render chunk tiếp theo.
+    """
+    if not filename.lower().endswith(".pdf"):
+        yield 1, Image.open(BytesIO(data)).convert("RGB")
+        return
+
+    if not resolve_pdfinfo():
+        raise RuntimeError("Missing Poppler/pdfinfo in PATH.")
+
+    poppler_path = resolve_poppler_path()
+    total = count_pdf_pages(data, filename)
+
+    render_kwargs = {"dpi": DPI, "thread_count": thread_count}
+    if poppler_path:
+        render_kwargs["poppler_path"] = poppler_path
+
+    for start in range(1, total + 1, chunk_size):
+        end = min(start + chunk_size - 1, total)
+        try:
+            chunk = convert_from_bytes(
+                data, first_page=start, last_page=end, **render_kwargs
+            )
+        except PDFInfoNotInstalledError as exc:
+            raise RuntimeError("Poppler/pdfinfo is not available.") from exc
+        except PDFPageCountError as exc:
+            raise RuntimeError(f"Could not read PDF page count: {exc}") from exc
+        for i, img in enumerate(chunk):
+            yield start + i, img.convert("RGB")

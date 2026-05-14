@@ -3,7 +3,7 @@
 import asyncio
 import json
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from sse_starlette.sse import EventSourceResponse
@@ -11,7 +11,8 @@ from sse_starlette.sse import EventSourceResponse
 from ocr_hvks.config import MAX_WORKERS, MODEL_NAME, POPPLER_PATH
 from ocr_hvks.llm import client as llm_client
 from ocr_hvks.ocr.pdf_loader import (
-    load_images_from_bytes,
+    count_pdf_pages,
+    iter_pdf_pages,
     resolve_pdfinfo,
     resolve_poppler_path,
 )
@@ -65,22 +66,26 @@ async def ocr_sync(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Chỉ chấp nhận PDF hoặc ảnh (PNG, JPG, TIFF, BMP, WEBP).")
     data = await file.read()
     try:
-        pages = load_images_from_bytes(data, fname)
+        total = count_pdf_pages(data, fname)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Could not load file: {exc}")
 
-    total = len(pages)
-    work = [(encode_pil(img), pnum, total, fname) for pnum, img in pages]
     started_at = time.time()
-    results = []
 
-    loop = asyncio.get_running_loop()
-    with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, total)) as executor:
-        futures = [executor.submit(ocr_one_page, *job) for job in work]
-        tasks = [loop.run_in_executor(None, lambda future=future: future.result()) for future in futures]
-        for coro in asyncio.as_completed(tasks):
-            results.append(await coro)
+    def run_pipeline() -> list[dict]:
+        # Render chunk → encode → submit ngay vào executor.
+        # Trong khi poppler render chunk tiếp theo, executor đã chạy LLM cho chunk trước.
+        results_inner: list[dict] = []
+        with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, total)) as executor:
+            futures = []
+            for pnum, img in iter_pdf_pages(data, fname):
+                b64 = encode_pil(img)
+                futures.append(executor.submit(ocr_one_page, b64, pnum, total, fname))
+            for fut in as_completed(futures):
+                results_inner.append(fut.result())
+        return results_inner
 
+    results = await asyncio.to_thread(run_pipeline)
     results.sort(key=lambda item: item["page"])
     return {
         "filename": fname,
@@ -100,12 +105,11 @@ async def ocr_stream(file: UploadFile = File(...)):
 
     async def event_generator():
         try:
-            pages = load_images_from_bytes(data, fname)
+            total = count_pdf_pages(data, fname)
         except Exception as exc:
             yield {"data": json.dumps({"type": "error", "detail": str(exc)})}
             return
 
-        total = len(pages)
         yield {
             "data": json.dumps(
                 {
@@ -118,23 +122,33 @@ async def ocr_stream(file: UploadFile = File(...)):
         }
 
         started_at = time.time()
-        work = [(encode_pil(img), pnum, total, fname) for pnum, img in pages]
         queue: asyncio.Queue = asyncio.Queue()
         loop = asyncio.get_running_loop()
 
-        def run_and_queue(args):
-            result = ocr_one_page(*args)
+        def run_and_queue(b64: str, pnum: int) -> None:
+            result = ocr_one_page(b64, pnum, total, fname)
             asyncio.run_coroutine_threadsafe(queue.put(result), loop)
 
         with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, total)) as executor:
-            for job in work:
-                executor.submit(run_and_queue, job)
+            def render_and_submit() -> None:
+                # Chạy trong background thread: render từng chunk → submit ngay.
+                # LLM workers chạy song song với render chunk tiếp theo.
+                for pnum, img in iter_pdf_pages(data, fname):
+                    b64 = encode_pil(img)
+                    executor.submit(run_and_queue, b64, pnum)
+
+            render_task = loop.run_in_executor(None, render_and_submit)
 
             received = 0
             while received < total:
                 result = await queue.get()
                 received += 1
                 yield {"data": json.dumps({"type": "page", **result})}
+
+            try:
+                await render_task
+            except Exception:
+                pass
 
         yield {
             "data": json.dumps(
