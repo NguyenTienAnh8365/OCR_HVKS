@@ -29,7 +29,7 @@ def encode_pil(img: Image.Image, max_side: int = 1568) -> str:
         scale = max_side / max(w, h)
         img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
     buf = BytesIO()
-    img.save(buf, format="JPEG", quality=85)
+    img.save(buf, format="JPEG", quality=95)
     return base64.b64encode(buf.getvalue()).decode()
 
 
