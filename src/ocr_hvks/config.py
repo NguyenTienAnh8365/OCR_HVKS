@@ -33,7 +33,7 @@ API_PORT = int(os.environ.get("API_PORT", 8900))
 
 # ---------- OCR ----------
 MAX_WORKERS = int(os.environ.get("MAX_WORKERS", 128))
-DPI = int(os.environ.get("DPI", 250))
+DPI = int(os.environ.get("DPI", 300))
 POPPLER_PATH = os.environ.get("POPPLER_PATH") or None
 
 
