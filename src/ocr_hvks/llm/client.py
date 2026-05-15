@@ -20,7 +20,7 @@ from ocr_hvks.config import (
 # Không có session: mỗi requests.post mở TCP mới → 256 socket tear-down/sec
 # gây TIME_WAIT pile-up + tail latency cao. Session + keep-alive tái dùng TCP.
 _session = requests.Session()
-_pool_size = max(MAX_WORKERS, 256)
+_pool_size = max(MAX_WORKERS, 128)
 _adapter = HTTPAdapter(
     pool_connections=_pool_size,
     pool_maxsize=_pool_size,

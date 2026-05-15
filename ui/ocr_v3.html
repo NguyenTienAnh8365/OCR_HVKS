@@ -1428,7 +1428,7 @@ async function runOCR(evt) {
   try {
     // Song song hóa: tối đa N file cùng lúc trong 1 tab.
     // Mỗi worker liên tục lấy file từ queue cho đến khi rỗng.
-    const CONCURRENT_FILES = 24;
+    const CONCURRENT_FILES = 20;
     const queue = [...pending];
     const workers = Array.from(
       {length: Math.min(CONCURRENT_FILES, queue.length)},
