@@ -5,17 +5,33 @@ nên client này không phụ thuộc engine cụ thể, chỉ cần đổi `LLM
 """
 
 import requests
+from requests.adapters import HTTPAdapter
 
 from ocr_hvks.config import (
     LLM_CHAT_URL,
     LLM_MODELS_URL,
+    MAX_WORKERS,
     MODEL_NAME,
     TUNNEL_HEADERS,
 )
 
 
+# Shared session với connection pool đủ lớn để cover MAX_WORKERS concurrent calls.
+# Không có session: mỗi requests.post mở TCP mới → 256 socket tear-down/sec
+# gây TIME_WAIT pile-up + tail latency cao. Session + keep-alive tái dùng TCP.
+_session = requests.Session()
+_pool_size = max(MAX_WORKERS, 256)
+_adapter = HTTPAdapter(
+    pool_connections=_pool_size,
+    pool_maxsize=_pool_size,
+    max_retries=0,
+)
+_session.mount("http://", _adapter)
+_session.mount("https://", _adapter)
+
+
 def list_models():
-    r = requests.get(LLM_MODELS_URL, headers=TUNNEL_HEADERS, timeout=10)
+    r = _session.get(LLM_MODELS_URL, headers=TUNNEL_HEADERS, timeout=10)
     r.raise_for_status()
     return [m["id"] for m in r.json().get("data", [])]
 
@@ -32,7 +48,7 @@ def chat(messages, *, max_tokens=4096, temperature=0.0, stream=False,
     }
     if extra:
         payload.update(extra)
-    return requests.post(
+    return _session.post(
         LLM_CHAT_URL,
         json=payload,
         headers=TUNNEL_HEADERS,

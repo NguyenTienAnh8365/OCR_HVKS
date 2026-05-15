@@ -2,10 +2,11 @@
 
 import asyncio
 import json
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from sse_starlette.sse import EventSourceResponse
 
 from ocr_hvks.config import MAX_WORKERS, MODEL_NAME, POPPLER_PATH
@@ -62,8 +63,7 @@ def health() -> dict:
 @router.post("/ocr")
 async def ocr_sync(file: UploadFile = File(...)):
     fname = file.filename or "upload"
-    if not any(fname.lower().endswith(ext) for ext in _ALLOWED_EXTENSIONS):
-        raise HTTPException(status_code=400, detail="Chỉ chấp nhận PDF hoặc ảnh (PNG, JPG, TIFF, BMP, WEBP).")
+    _validate_file_ext(fname)
     data = await file.read()
     try:
         total = count_pdf_pages(data, fname)
@@ -78,7 +78,7 @@ async def ocr_sync(file: UploadFile = File(...)):
         results_inner: list[dict] = []
         with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, total)) as executor:
             futures = []
-            for pnum, img in iter_pdf_pages(data, fname):
+            for pnum, img in iter_pdf_pages(data, fname, total=total):
                 b64 = encode_pil(img)
                 futures.append(executor.submit(ocr_one_page, b64, pnum, total, fname))
             for fut in as_completed(futures):
@@ -97,10 +97,9 @@ async def ocr_sync(file: UploadFile = File(...)):
 
 
 @router.post("/ocr/stream")
-async def ocr_stream(file: UploadFile = File(...)):
+async def ocr_stream(request: Request, file: UploadFile = File(...)):
     fname = file.filename or "upload"
-    if not any(fname.lower().endswith(ext) for ext in _ALLOWED_EXTENSIONS):
-        raise HTTPException(status_code=400, detail="Chỉ chấp nhận PDF hoặc ảnh (PNG, JPG, TIFF, BMP, WEBP).")
+    _validate_file_ext(fname)
     data = await file.read()
 
     async def event_generator():
@@ -124,24 +123,42 @@ async def ocr_stream(file: UploadFile = File(...)):
         started_at = time.time()
         queue: asyncio.Queue = asyncio.Queue()
         loop = asyncio.get_running_loop()
+        stop_event = threading.Event()
 
         def run_and_queue(b64: str, pnum: int) -> None:
+            if stop_event.is_set():
+                return
             result = ocr_one_page(b64, pnum, total, fname)
             asyncio.run_coroutine_threadsafe(queue.put(result), loop)
 
-        with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, total)) as executor:
+        executor = ThreadPoolExecutor(max_workers=min(MAX_WORKERS, total))
+        cancelled = False
+        try:
             def render_and_submit() -> None:
                 # Chạy trong background thread: render từng chunk → submit ngay.
                 # LLM workers chạy song song với render chunk tiếp theo.
-                for pnum, img in iter_pdf_pages(data, fname):
+                # stop_event ngắt vòng lặp ngay khi client disconnect, tránh
+                # render hết PDF cho 1 SSE đã đóng.
+                for pnum, img in iter_pdf_pages(data, fname, total=total):
+                    if stop_event.is_set():
+                        return
                     b64 = encode_pil(img)
+                    if stop_event.is_set():
+                        return
                     executor.submit(run_and_queue, b64, pnum)
 
             render_task = loop.run_in_executor(None, render_and_submit)
 
             received = 0
             while received < total:
-                result = await queue.get()
+                try:
+                    result = await asyncio.wait_for(queue.get(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    if await request.is_disconnected():
+                        stop_event.set()
+                        cancelled = True
+                        break
+                    continue
                 received += 1
                 yield {"data": json.dumps({"type": "page", **result})}
 
@@ -149,6 +166,11 @@ async def ocr_stream(file: UploadFile = File(...)):
                 await render_task
             except Exception:
                 pass
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+
+        if cancelled:
+            return
 
         yield {
             "data": json.dumps(
