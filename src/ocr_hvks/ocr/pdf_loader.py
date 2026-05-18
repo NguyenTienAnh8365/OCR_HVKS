@@ -69,11 +69,15 @@ def iter_pdf_pages(
     filename: str,
     chunk_size: int = 8,
     thread_count: int = 4,
+    total: int | None = None,
 ) -> Iterator[tuple[int, Image.Image]]:
     """Lazy generator yield (page_num, PIL) theo từng chunk.
 
     Khác load_images_from_bytes: không render cả file 1 lần, mà render chunk_size
     trang một, để caller có thể submit job LLM song song với render chunk tiếp theo.
+
+    `total` có thể được truyền vào nếu caller đã gọi count_pdf_pages trước đó —
+    tránh stat poppler lần hai.
     """
     if not filename.lower().endswith(".pdf"):
         yield 1, Image.open(BytesIO(data)).convert("RGB")
@@ -83,7 +87,8 @@ def iter_pdf_pages(
         raise RuntimeError("Missing Poppler/pdfinfo in PATH.")
 
     poppler_path = resolve_poppler_path()
-    total = count_pdf_pages(data, filename)
+    if total is None:
+        total = count_pdf_pages(data, filename)
 
     render_kwargs = {"dpi": DPI, "thread_count": thread_count}
     if poppler_path:

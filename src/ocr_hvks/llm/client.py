@@ -5,17 +5,53 @@ nên client này không phụ thuộc engine cụ thể, chỉ cần đổi `LLM
 """
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from ocr_hvks.config import (
     LLM_CHAT_URL,
     LLM_MODELS_URL,
+    MAX_WORKERS,
     MODEL_NAME,
     TUNNEL_HEADERS,
 )
 
 
+# Session dùng chung + connection pool: tái dùng TCP keep-alive thay vì mở
+# socket mới mỗi request (mở/đóng socket liên tục → TIME_WAIT pile-up, tail
+# latency cao).
+#
+# Cạm bẫy: uvicorn của vLLM đóng kết nối keep-alive idle sau ~5s. Trong lúc
+# poppler render chunk kế tiếp, kết nối trong pool nằm idle → bị server đóng.
+# Nếu để max_retries=0, lần dùng lại kết nối chết đó ném ConnectionError và
+# vòng retry ở ocr_one_page phạt sleep(1.5s+) → throughput tụt.
+#
+# Retry dưới đây cho urllib3 TỰ thay kết nối chết ngay trong một lần gọi:
+# backoff_factor=0 nên không sleep, allowed_methods=False để retry cả POST
+# (mặc định urllib3 bỏ qua POST). Kết nối chết chỉ còn tốn 1 round-trip thay
+# vì 1.5s.
+_retry = Retry(
+    total=3,
+    connect=3,
+    read=2,
+    status=0,
+    backoff_factor=0,        # thay kết nối ngay, không chờ
+    allowed_methods=False,   # False = retry mọi method, kể cả POST
+    raise_on_status=False,
+)
+_pool_size = max(MAX_WORKERS, 128)
+_adapter = HTTPAdapter(
+    pool_connections=_pool_size,
+    pool_maxsize=_pool_size,
+    max_retries=_retry,
+)
+_session = requests.Session()
+_session.mount("http://", _adapter)
+_session.mount("https://", _adapter)
+
+
 def list_models():
-    r = requests.get(LLM_MODELS_URL, headers=TUNNEL_HEADERS, timeout=10)
+    r = _session.get(LLM_MODELS_URL, headers=TUNNEL_HEADERS, timeout=10)
     r.raise_for_status()
     return [m["id"] for m in r.json().get("data", [])]
 
@@ -32,7 +68,7 @@ def chat(messages, *, max_tokens=4096, temperature=0.0, stream=False,
     }
     if extra:
         payload.update(extra)
-    return requests.post(
+    return _session.post(
         LLM_CHAT_URL,
         json=payload,
         headers=TUNNEL_HEADERS,
