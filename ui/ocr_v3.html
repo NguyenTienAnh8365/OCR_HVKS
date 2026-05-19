@@ -919,8 +919,8 @@ button.cta:hover { opacity:.93; }
 
 <script>
 // Keep in sync with colab/run_local_src.py default SUBDOMAIN.
-const UI_DEFAULT_OCR_API = 'http://100.75.29.73:8900';
-const UI_DEFAULT_LATEX_API = 'http://100.75.29.73:8900';
+const UI_DEFAULT_OCR_API = 'https://indicate-wanna-danny-boston.trycloudflare.com';
+const UI_DEFAULT_LATEX_API = 'https://indicate-wanna-danny-boston.trycloudflare.com';
 const urlParams = new URLSearchParams(window.location.search);
 const queryApi = (urlParams.get('api') || '').trim().replace(/\/+$/,'');
 const queryOcrApi = (urlParams.get('ocr_api') || '').trim().replace(/\/+$/,'');
@@ -956,6 +956,7 @@ let files   = [];    // File objects
 let results = {};    // fileKey → { filename, pages, total_time_s, totalPages }
 let batchStartMs = 0;   // wall-clock start của batch OCR hiện tại (Date.now())
 let batchEndMs = 0;     // wall-clock end khi batch xong (0 = đang chạy)
+let batchKeys = new Set();  // fileKey các file thuộc batch OCR gần nhất
 let extracts = {};   // fileKey → { status: 'idle'|'running'|'done'|'error', data, error, time_s }
 let timers  = {};
 let viewerKey  = null;   // fileKey currently shown in right panel
@@ -1425,6 +1426,7 @@ async function runOCR(evt) {
   $('run-btn').disabled=true;
   batchStartMs = Date.now();
   batchEndMs = 0;
+  batchKeys = new Set(pending.map(f=>fileKey(f)));
   try {
     // Song song hóa: tối đa N file cùng lúc trong 1 tab.
     // Mỗi worker liên tục lấy file từ queue cho đến khi rỗng.
@@ -1959,20 +1961,25 @@ document.addEventListener('keydown',e=>{
 
 // ── Stats ──────────────────────────────────────────────────────────────────
 function updateStats(){
-  const all=Object.values(results).filter(r=>r.total_time_s>0);
-  if(!all.length){ $('stats-mini').style.display='none'; return; }
-  const tp=all.reduce((s,r)=>s+r.pages.length,0);
-  // Tổng = wall-clock của batch (đúng khi chạy song song nhiều file).
-  // Fallback về sum nếu chưa có batch info (vd load lại trang).
+  // Chỉ thống kê các file thuộc batch GẦN NHẤT (batchKeys) → 4 ô (Trang,
+  // Tổng, TB/tr, Lỗi) luôn là một bộ nhất quán cho lần chạy đó. Nếu tính
+  // trên toàn bộ results thì chạy batch thứ 2 sẽ lấy wall-clock batch mới
+  // chia cho số trang cộng dồn → TB/tr sai.
+  const scope=Object.entries(results)
+    .filter(([k,r])=>batchKeys.has(k) && r.total_time_s>0)
+    .map(([,r])=>r);
+  if(!scope.length){ $('stats-mini').style.display='none'; return; }
+  const tp=scope.reduce((s,r)=>s+r.pages.length,0);
+  // Tổng = wall-clock của batch (đúng cả khi chạy song song nhiều file).
   let tt;
   if(batchStartMs > 0){
     const endMs = batchEndMs || Date.now();
     tt = (endMs - batchStartMs) / 1000;
   } else {
-    tt = all.reduce((s,r)=>s+r.total_time_s,0);
+    tt = scope.reduce((s,r)=>s+r.total_time_s,0);
   }
   const av=tp?(tt/tp).toFixed(2).replace('.', ','):'0,00';
-  const er=all.flatMap(r=>r.pages).filter(p=>!p.ok).length;
+  const er=scope.flatMap(r=>r.pages).filter(p=>!p.ok).length;
   $('stats-mini').innerHTML=`
     <div class="stat-mini"><div class="stat-mini-v">${tp}</div><div class="stat-mini-l">Trang</div></div>
     <div class="stat-mini"><div class="stat-mini-v">${tt.toFixed(1)}s</div><div class="stat-mini-l">Tổng</div></div>
