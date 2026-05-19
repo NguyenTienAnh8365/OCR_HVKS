@@ -11,6 +11,11 @@ EnvironmentFile=-/opt/ocr_hvks/.env
 ExecStart=/usr/bin/env bash /opt/ocr_hvks/deploy/start_api.sh
 Restart=on-failure
 RestartSec=5
+# Chờ uvicorn graceful shutdown (xem API_TIMEOUT_GRACEFUL) rồi mới SIGKILL.
+TimeoutStopSec=40
+# Trần file descriptor: connection pool (LLM_CONCURRENCY) + nhiều SSE đồng
+# thời dễ vượt mặc định 1024 → cần nới rộng.
+LimitNOFILE=65536
 StandardOutput=journal
 StandardError=journal
 
