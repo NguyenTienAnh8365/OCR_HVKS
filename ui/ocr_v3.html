@@ -1430,7 +1430,7 @@ async function runOCR(evt) {
   try {
     // Song song hóa: tối đa N file cùng lúc trong 1 tab.
     // Mỗi worker liên tục lấy file từ queue cho đến khi rỗng.
-    const CONCURRENT_FILES = 24;
+    const CONCURRENT_FILES = 20;
     const queue = [...pending];
     const workers = Array.from(
       {length: Math.min(CONCURRENT_FILES, queue.length)},
@@ -1459,96 +1459,110 @@ function startTimer(id) {
 }
 function stopTimer(id){ clearInterval(timers[id]); delete timers[id]; }
 
+// Số lần thử tối đa cho 1 file. Stream SSE có thể bị cloudflared tunnel rớt
+// giữa chừng (server vẫn ok) — tự retry thay vì bắt user "chạy lại" tay.
+const OCR_MAX_TRIES = 3;
+
 async function processFile(file) {
   file._ocrProc=true;
   const k=fileKey(file);
   clearFileError(file);
-  results[k]={ filename:file.name, pages:[], total_time_s:0, totalPages:0 };
   delete extracts[k];
-  renderQueue();
-  if(viewerKey===k) renderExtract(k);
-
-  const fd=new FormData(); fd.append('file',file);
-  $('prog-wrap').style.display='block';
-  $('prog-label').textContent=file.name;
-  $('prog-count').textContent='…';
-  $('chips-row').innerHTML='';
-  $('prog-fill').style.width='0%';
-
-  // Update badge
-  const badge=$('fq-badge-'+slug(file.name));
-  if(badge){ badge.textContent='đang xử lý'; badge.className='fq-badge proc'; }
-
-  // Chỉ auto-open nếu chưa xem file nào
   if(!viewerKey) openViewer(k);
 
-  try {
-    const res=await fetch(buildApiUrl(OCR_API,'/ocr/stream'),{
-      method:'POST',
-      headers: buildApiHeaders(OCR_API),
-      body:fd
-    });
-    if(!res.ok) throw new Error(`Server trả về ${res.status}`);
+  let lastErr='Không nhận được phản hồi OCR';
 
-    const reader=res.body.getReader(), dec=new TextDecoder();
-    let buf='', total=0, doneN=0, doneEvent=false;
+  for(let attempt=1; attempt<=OCR_MAX_TRIES; attempt++){
+    // Stream không resume được → mỗi lần thử là chạy lại file từ đầu.
+    results[k]={ filename:file.name, pages:[], total_time_s:0, totalPages:0 };
+    renderQueue();
+    if(viewerKey===k) renderExtract(k);
 
-    while(true){
-      const {done,value}=await reader.read(); if(done) break;
-      buf+=dec.decode(value,{stream:true});
-      const lines=buf.split('\n'); buf=lines.pop();
-      for(const line of lines){
-        if(!line.startsWith('data: ')) continue;
-        let ev; try{ ev=JSON.parse(line.slice(6)); } catch{ continue; }
+    const fd=new FormData(); fd.append('file',file);
+    $('prog-wrap').style.display='block';
+    $('prog-label').textContent=file.name+(attempt>1?` (thử lại ${attempt}/${OCR_MAX_TRIES})`:'');
+    $('prog-count').textContent='…';
+    $('chips-row').innerHTML='';
+    $('prog-fill').style.width='0%';
+    const badge=$('fq-badge-'+slug(file.name));
+    if(badge){ badge.textContent='đang xử lý'; badge.className='fq-badge proc'; }
 
-        if(ev.type==='start'){
-          total=ev.total_pages;
-          results[k].totalPages=total;
-          $('prog-count').textContent=`0 / ${total}`;
-          $('chips-row').innerHTML=Array.from({length:total},(_,i)=>
-            `<div class="chip run" id="chip-${slug(file.name)}-${i+1}">tr${i+1} <span class="chip-t" id="chip-${slug(file.name)}-${i+1}-t">0.0s</span></div>`
-          ).join('');
-          for(let p=1;p<=total;p++) startTimer(`chip-${slug(file.name)}-${p}`);
-          if(viewerKey===k) refreshViewerThumbsLive(k);
+    let serverErr=null;
+    try {
+      const res=await fetch(buildApiUrl(OCR_API,'/ocr/stream'),{
+        method:'POST',
+        headers: buildApiHeaders(OCR_API),
+        body:fd
+      });
+      if(!res.ok) throw new Error(`Server trả về ${res.status}`);
 
-        } else if(ev.type==='page'){
-          doneN++;
-          results[k].pages.push(ev);
-          results[k].pages.sort((a,b)=>a.page-b.page);
-          const cid=`chip-${slug(file.name)}-${ev.page}`;
-          stopTimer(cid);
-          const chip=$(cid);
-          if(chip){ chip.className='chip '+(ev.ok?'ok':'err'); const ct=$(cid+'-t'); if(ct) ct.textContent=ev.time_s+'s'; }
-          $('prog-fill').style.width=Math.round(doneN/total*100)+'%';
-          $('prog-count').textContent=`${doneN} / ${total}`;
-          // If viewing this file, update
-          if(viewerKey===k){
-            refreshViewerThumbsLive(k);
-            if(viewerPage===ev.page || doneN===1) showViewerPage(ev.page);
+      const reader=res.body.getReader(), dec=new TextDecoder();
+      let buf='', total=0, doneN=0, doneEvent=false;
+
+      while(true){
+        const {done,value}=await reader.read(); if(done) break;
+        buf+=dec.decode(value,{stream:true});
+        const lines=buf.split('\n'); buf=lines.pop();
+        for(const line of lines){
+          if(!line.startsWith('data: ')) continue;
+          let ev; try{ ev=JSON.parse(line.slice(6)); } catch{ continue; }
+
+          if(ev.type==='start'){
+            total=ev.total_pages;
+            results[k].totalPages=total;
+            $('prog-count').textContent=`0 / ${total}`;
+            $('chips-row').innerHTML=Array.from({length:total},(_,i)=>
+              `<div class="chip run" id="chip-${slug(file.name)}-${i+1}">tr${i+1} <span class="chip-t" id="chip-${slug(file.name)}-${i+1}-t">0.0s</span></div>`
+            ).join('');
+            for(let p=1;p<=total;p++) startTimer(`chip-${slug(file.name)}-${p}`);
+            if(viewerKey===k) refreshViewerThumbsLive(k);
+
+          } else if(ev.type==='page'){
+            doneN++;
+            results[k].pages.push(ev);
+            results[k].pages.sort((a,b)=>a.page-b.page);
+            const cid=`chip-${slug(file.name)}-${ev.page}`;
+            stopTimer(cid);
+            const chip=$(cid);
+            if(chip){ chip.className='chip '+(ev.ok?'ok':'err'); const ct=$(cid+'-t'); if(ct) ct.textContent=ev.time_s+'s'; }
+            $('prog-fill').style.width=Math.round(doneN/total*100)+'%';
+            $('prog-count').textContent=`${doneN} / ${total}`;
+            if(viewerKey===k){
+              refreshViewerThumbsLive(k);
+              if(viewerPage===ev.page || doneN===1) showViewerPage(ev.page);
+            }
+
+          } else if(ev.type==='done'){
+            file._ocrDone=true; file._ocrProc=false; file._selected=false;
+            results[k].total_time_s=ev.total_time_s;
+            doneEvent=true;
+            renderQueue();
+            $('prog-label').textContent=file.name+' — xong ✓';
+            if(viewerKey===k) refreshViewerHeader(k);
+
+          } else if(ev.type==='error'){
+            serverErr=ev.detail || 'OCR stream error';
           }
-
-        } else if(ev.type==='done'){
-          file._ocrDone=true; file._ocrProc=false; file._selected=false;
-          results[k].total_time_s=ev.total_time_s;
-          doneEvent=true;
-          renderQueue();
-          $('prog-label').textContent=file.name+' — xong ✓';
-          if(viewerKey===k) refreshViewerHeader(k);
-
-        } else if(ev.type==='error'){
-          throw new Error(ev.detail || 'OCR stream error');
         }
       }
+
+      if(doneEvent) return;                          // ✓ xong
+      if(serverErr){ lastErr=serverErr; break; }     // server từ chối → không retry
+      lastErr='Luồng OCR bị ngắt trước khi hoàn tất'; // đứt giữa chừng → retry
+    } catch(e){
+      lastErr=e?.message||String(e);                 // lỗi mạng/HTTP → retry
     }
 
-    if(!doneEvent){
-      throw new Error(total ? 'Luồng OCR bị ngắt trước khi hoàn tất' : 'Không nhận được phản hồi OCR');
+    if(attempt<OCR_MAX_TRIES){
+      toast(`${file.name}: kết nối lỗi, thử lại (${attempt+1}/${OCR_MAX_TRIES})…`);
+      await new Promise(r=>setTimeout(r, 600*attempt));
     }
-  } catch(e){
-    const msg=e?.message||String(e);
-    toast('Lỗi OCR: '+msg);
-    setFileError(file, msg);
   }
+
+  // Hết lượt thử mà vẫn chưa xong.
+  file._ocrProc=false;
+  toast('Lỗi OCR: '+lastErr);
+  setFileError(file, lastErr);
 }
 
 // ── Viewer ─────────────────────────────────────────────────────────────────
