@@ -232,12 +232,40 @@ ocr-hvks-server
 
 # run product
 ## Cài unit files (1 lần)
+```bash
 sudo cp deploy/systemd/vllm.service            /etc/systemd/system/vllm@.service
 sudo cp deploy/systemd/ocr-hvks-api.service    /etc/systemd/system/ocr-hvks-api@.service
 sudo cp deploy/systemd/ocr-hvks-tunnel.service /etc/systemd/system/ocr-hvks-tunnel@.service
 sudo systemctl daemon-reload
+```
 
 ## Start (thay abc bằng user thực)
+```bash
 sudo systemctl enable --now vllm@abc.service
 sudo systemctl enable --now ocr-hvks-api@abc.service
 sudo systemctl enable --now ocr-hvks-tunnel@abc.service
+```
+
+## Xem log
+```bash
+sudo journalctl -u vllm@abc.service -f
+sudo journalctl -u ocr-hvks-api@abc.service -f
+sudo journalctl -u ocr-hvks-tunnel@abc.service -f
+```
+
+## Restart / Stop
+```bash
+sudo systemctl restart vllm@abc.service
+sudo systemctl restart ocr-hvks-api@abc.service
+sudo systemctl stop vllm@abc.service
+```
+
+## Health check
+```bash
+curl http://localhost:8900/health
+```
+
+## Lấy URL tunnel
+```bash
+sudo journalctl -u ocr-hvks-tunnel@abc.service -f | grep trycloudflare
+```
