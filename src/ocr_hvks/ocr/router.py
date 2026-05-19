@@ -220,10 +220,6 @@ async def ocr_stream(file: UploadFile = File(...)):
                 try:
                     result = await asyncio.wait_for(queue.get(), timeout=1.0)
                 except asyncio.TimeoutError:
-                    # Chỉ check deadline. KHÔNG poll request.is_disconnected():
-                    # hàm đó hay báo nhầm "đã ngắt" khi có nhiều SSE đồng thời,
-                    # gây cancel oan giữa chừng ("Luồng OCR bị ngắt..."). Client
-                    # ngắt THẬT thì sse_starlette huỷ generator → finally chạy.
                     if time.time() - started_at > OCR_REQUEST_TIMEOUT_S:
                         timed_out = True
                         break
@@ -232,45 +228,54 @@ async def ocr_stream(file: UploadFile = File(...)):
                 if not result.get("ok"):
                     failed += 1
                 yield {"data": json.dumps({"type": "page", **result})}
-        finally:
-            # Client ngắt SSE (GeneratorExit) hoặc job xong/quá hạn → dừng render.
-            stop_event.set()
-            if received < total and not timed_out:
-                metrics.record_request(pages=received, pages_failed=failed)
-                logger.info(
-                    "ocr/stream cancel rid=%s file=%s done=%d/%d",
-                    rid, fname, received, total,
+
+            # render_task có thể đã ném lỗi (poppler hỏng…) → log ra, đừng nuốt.
+            try:
+                await render_task
+            except Exception:
+                logger.exception("ocr/stream render lỗi rid=%s file=%s", rid, fname)
+
+            dur = time.time() - started_at
+            if timed_out:
+                metrics.record_request(pages=received, pages_failed=failed, failed=True)
+                logger.warning(
+                    "ocr/stream timeout rid=%s file=%s done=%d/%d dur=%.1fs",
+                    rid, fname, received, total, dur,
                 )
+                yield {"data": json.dumps({"type": "error", "detail": "OCR quá hạn xử lý."})}
+                return
 
-        try:
-            await render_task
+            metrics.record_request(pages=received, pages_failed=failed)
+            logger.info(
+                "ocr/stream done rid=%s file=%s pages=%d failed=%d dur=%.1fs",
+                rid, fname, received, failed, dur,
+            )
+            yield {
+                "data": json.dumps(
+                    {
+                        "type": "done",
+                        "output_format": "text",
+                        "total_time_s": round(dur, 2),
+                    }
+                )
+            }
         except Exception:
-            pass
-
-        dur = time.time() - started_at
-
-        if timed_out:
+            # Bất kỳ exception nào trong luồng SSE → log full traceback (trước
+            # đây bị nuốt nên chỉ thấy "stream đứt" mà không rõ vì sao).
+            logger.exception(
+                "ocr/stream FAILED rid=%s file=%s done=%d/%d",
+                rid, fname, received, total,
+            )
             metrics.record_request(pages=received, pages_failed=failed, failed=True)
-            logger.warning(
-                "ocr/stream timeout rid=%s file=%s done=%d/%d dur=%.1fs",
-                rid, fname, received, total, dur,
+            yield {"data": json.dumps(
+                {"type": "error", "detail": "Lỗi xử lý OCR phía server."}
+            )}
+        finally:
+            # Luôn chạy: client ngắt (GeneratorExit), xong, lỗi, hay quá hạn.
+            stop_event.set()
+            logger.info(
+                "ocr/stream end rid=%s file=%s received=%d/%d timed_out=%s",
+                rid, fname, received, total, timed_out,
             )
-            yield {"data": json.dumps({"type": "error", "detail": "OCR quá hạn xử lý."})}
-            return
-
-        metrics.record_request(pages=received, pages_failed=failed)
-        logger.info(
-            "ocr/stream done rid=%s file=%s pages=%d failed=%d dur=%.1fs",
-            rid, fname, received, failed, dur,
-        )
-        yield {
-            "data": json.dumps(
-                {
-                    "type": "done",
-                    "output_format": "text",
-                    "total_time_s": round(dur, 2),
-                }
-            )
-        }
 
     return EventSourceResponse(event_generator())
