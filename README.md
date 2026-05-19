@@ -229,3 +229,15 @@ pip install -e .
 $env:LLM_BASE_URL = "https://xxx.trycloudflare.com"
 ocr-hvks-server
 ```
+
+# run product
+## Cài unit files (1 lần)
+sudo cp deploy/systemd/vllm.service            /etc/systemd/system/vllm@.service
+sudo cp deploy/systemd/ocr-hvks-api.service    /etc/systemd/system/ocr-hvks-api@.service
+sudo cp deploy/systemd/ocr-hvks-tunnel.service /etc/systemd/system/ocr-hvks-tunnel@.service
+sudo systemctl daemon-reload
+
+## Start (thay abc bằng user thực)
+sudo systemctl enable --now vllm@abc.service
+sudo systemctl enable --now ocr-hvks-api@abc.service
+sudo systemctl enable --now ocr-hvks-tunnel@abc.service

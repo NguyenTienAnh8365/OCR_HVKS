@@ -6,9 +6,9 @@ Wants=network-online.target vllm@%i.service
 [Service]
 Type=simple
 User=%i
-WorkingDirectory=/opt/ocr_hvks
-EnvironmentFile=-/opt/ocr_hvks/.env
-ExecStart=/usr/bin/env bash /opt/ocr_hvks/deploy/start_api.sh
+WorkingDirectory=/home/%i/AI_project/OCR_HVKS
+EnvironmentFile=-/home/%i/AI_project/OCR_HVKS/.env
+ExecStart=/usr/bin/env bash /home/%i/AI_project/OCR_HVKS/deploy/start_api.sh
 Restart=on-failure
 RestartSec=5
 # Chờ uvicorn graceful shutdown (xem API_TIMEOUT_GRACEFUL) rồi mới SIGKILL.

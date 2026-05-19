@@ -6,9 +6,9 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=%i
-WorkingDirectory=/opt/ocr_hvks
-EnvironmentFile=-/opt/ocr_hvks/.env
-ExecStart=/usr/bin/env bash /opt/ocr_hvks/deploy/start_cloudflared.sh
+WorkingDirectory=/home/%i/AI_project/OCR_HVKS
+EnvironmentFile=-/home/%i/AI_project/OCR_HVKS/.env
+ExecStart=/usr/bin/env bash /home/%i/AI_project/OCR_HVKS/deploy/start_cloudflared.sh
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
