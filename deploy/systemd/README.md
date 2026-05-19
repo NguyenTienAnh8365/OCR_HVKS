@@ -1,47 +1,63 @@
 # systemd units cho OCR_HVKS
 
 Deploy 3 service: vLLM (LLM backend) → FastAPI (combined) → Cloudflared tunnel.
+Unit là template (`@`), `%i` thay bằng tên user chạy — ví dụ dưới dùng `abc`.
 
-## Cài đặt
+Repo đặt tại `~/AI_project/OCR_HVKS` (unit file trỏ tới `/home/%i/AI_project/OCR_HVKS`).
 
-Giả sử repo nằm ở `/opt/ocr_hvks` và user chạy là `abc` (đổi nếu khác).
+## Cài unit files (1 lần)
 
 ```bash
-# 1. Đặt repo + cài deps
-sudo mkdir -p /opt/ocr_hvks
-sudo chown $USER:$USER /opt/ocr_hvks
-git clone <repo> /opt/ocr_hvks
-cd /opt/ocr_hvks
-./deploy/install_server.sh           # cài apt deps + venv + pip install
-
-# 2. Cài vLLM trong venv (theo CUDA của server)
-. .venv/bin/activate
-pip install vllm                     # hoặc theo docs.vllm.ai cho CUDA tương ứng
-
-# 3. Cấu hình env
-cp .env.example .env
-nano .env                            # đổi MODEL_NAME, TP_SIZE, ports nếu cần
-
-# 4. Cài systemd unit (template — %i sẽ thay bằng tên user)
 sudo cp deploy/systemd/vllm.service            /etc/systemd/system/vllm@.service
 sudo cp deploy/systemd/ocr-hvks-api.service    /etc/systemd/system/ocr-hvks-api@.service
 sudo cp deploy/systemd/ocr-hvks-tunnel.service /etc/systemd/system/ocr-hvks-tunnel@.service
 sudo systemctl daemon-reload
+```
 
-# 5. Start theo user (vd user `abc`)
+> Mỗi lần sửa file `.service` trong repo phải `cp` lại + `daemon-reload` mới có hiệu lực.
+
+## Start
+
+`enable --now` = chạy ngay + tự lên khi boot.
+
+```bash
 sudo systemctl enable --now vllm@abc.service
 sudo systemctl enable --now ocr-hvks-api@abc.service
 sudo systemctl enable --now ocr-hvks-tunnel@abc.service
 ```
 
-## Quan sát
+## Xem log
 
 ```bash
-sudo systemctl status vllm@abc.service
 sudo journalctl -u vllm@abc.service -f
 sudo journalctl -u ocr-hvks-api@abc.service -f
+sudo journalctl -u ocr-hvks-tunnel@abc.service -f
+```
+
+## Restart / Stop
+
+```bash
+sudo systemctl restart vllm@abc.service
+sudo systemctl restart ocr-hvks-api@abc.service
+sudo systemctl stop vllm@abc.service
+```
+
+- Sửa code `client.py` / `router.py` / `config.py` → `restart ocr-hvks-api@abc`.
+- Sửa `MAX_NUM_SEQS` / config vLLM → `restart vllm@abc`.
+
+## Health check
+
+```bash
+curl http://localhost:8900/health
+```
+
+## Lấy URL tunnel
+
+```bash
 sudo journalctl -u ocr-hvks-tunnel@abc.service -f | grep trycloudflare
 ```
+
+URL random mỗi lần tunnel khởi động lại — lấy lại từ log.
 
 ## Uninstall
 
