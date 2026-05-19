@@ -87,27 +87,32 @@ Test trên Ubuntu 22.04+ với 2× NVIDIA RTX PRO 6000 Blackwell.
 
 ```bash
 # 1. clone
-git clone <repo> /opt/ocr_hvks && cd /opt/ocr_hvks
+git clone <repo> ~/AI_project/OCR_HVKS && cd ~/AI_project/OCR_HVKS
 
-# 2. cài system deps + venv + python deps
-./deploy/install_server.sh
+# 2. tạo venv và cài deps
+uv venv .venv --python 3.12.10
+source .venv/bin/activate
+uv pip install -r requirements.txt && uv pip install -e .
 
-# 3. cài vLLM trong venv (theo CUDA của server, xem docs.vllm.ai)
-. .venv/bin/activate
-pip install vllm
+# 3. cài vLLM (pin version ổn định cho Blackwell)
+uv pip install vllm==0.19.1
 
-# 4. cấu hình
+# 4. cài cloudflared
+sudo curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared
+sudo chmod +x /usr/local/bin/cloudflared
+
+# 5. cấu hình
 cp .env.example .env
 nano .env                        # đổi MODEL_NAME, TP_SIZE nếu cần
 
-# 5. test thủ công (2 terminal)
+# 6. test thủ công (2 terminal)
 ./deploy/start_vllm.sh           # terminal 1 — đợi server ready
 ./deploy/start_api.sh            # terminal 2
 
-# 6. health check
+# 7. health check
 curl http://localhost:8900/health
 
-# 7. expose ra ngoài (optional)
+# 8. expose ra ngoài (optional)
 ./deploy/start_cloudflared.sh    # in URL https://xxx.trycloudflare.com
 ```
 
@@ -239,7 +244,7 @@ sudo cp deploy/systemd/ocr-hvks-tunnel.service /etc/systemd/system/ocr-hvks-tunn
 sudo systemctl daemon-reload
 ```
 
-## Start (thay abc bằng user thực)
+## Start
 ```bash
 sudo systemctl enable --now vllm@abc.service
 sudo systemctl enable --now ocr-hvks-api@abc.service
