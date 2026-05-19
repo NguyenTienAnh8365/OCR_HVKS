@@ -28,6 +28,23 @@ _executor = ThreadPoolExecutor(
 # base64 trong RAM.
 _slots = threading.Semaphore(LLM_CONCURRENCY)
 
+# Gauge số trang đang in-flight — cho endpoint /ocr/stats quan sát.
+_inflight = 0
+_inflight_lock = threading.Lock()
+
+
+def inflight() -> int:
+    """Số trang OCR đang chạy/chờ trong pool chung (mọi request cộng lại)."""
+    with _inflight_lock:
+        return _inflight
+
+
+def _on_done(_: Future) -> None:
+    global _inflight
+    with _inflight_lock:
+        _inflight -= 1
+    _slots.release()
+
 
 def submit_page(fn: Callable[..., object], *args) -> Future:
     """Submit một job OCR-trang vào pool chung.
@@ -35,11 +52,16 @@ def submit_page(fn: Callable[..., object], *args) -> Future:
     BLOCKING khi pool đã đầy LLM_CONCURRENCY trang — chính là backpressure
     mong muốn: caller (vòng render) tự chờ thay vì nhồi thêm việc cho vLLM.
     """
+    global _inflight
     _slots.acquire()
+    with _inflight_lock:
+        _inflight += 1
     try:
         fut = _executor.submit(fn, *args)
     except BaseException:
+        with _inflight_lock:
+            _inflight -= 1
         _slots.release()
         raise
-    fut.add_done_callback(lambda _: _slots.release())
+    fut.add_done_callback(_on_done)
     return fut
