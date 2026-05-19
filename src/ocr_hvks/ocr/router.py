@@ -8,7 +8,7 @@ import time
 import uuid
 from concurrent.futures import as_completed
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from sse_starlette.sse import EventSourceResponse
 
 from ocr_hvks.config import (
@@ -150,7 +150,7 @@ async def ocr_sync(file: UploadFile = File(...)):
 
 
 @router.post("/ocr/stream")
-async def ocr_stream(request: Request, file: UploadFile = File(...)):
+async def ocr_stream(file: UploadFile = File(...)):
     rid = uuid.uuid4().hex[:8]
     fname = file.filename or "upload"
     _validate_file_ext(fname)
@@ -195,15 +195,14 @@ async def ocr_stream(request: Request, file: UploadFile = File(...)):
             result = ocr_one_page(b64, pnum, total, fname)
             asyncio.run_coroutine_threadsafe(queue.put(result), loop)
 
-        cancelled = False
         timed_out = False
 
         def render_and_submit() -> None:
             # Chạy trong background thread: render từng chunk → submit ngay vào
             # pool CHUNG. submit_page block khi pool đầy LLM_CONCURRENCY trang
             # → vòng render tự nghẽn theo tốc độ vLLM tiêu thụ (backpressure).
-            # stop_event ngắt vòng lặp ngay khi client disconnect, tránh render
-            # hết PDF cho 1 SSE đã đóng.
+            # stop_event ngắt vòng lặp khi job xong/huỷ, tránh render hết PDF
+            # cho 1 SSE đã đóng.
             for pnum, img in iter_pdf_pages(data, fname, total=total):
                 if stop_event.is_set():
                     return
@@ -216,23 +215,32 @@ async def ocr_stream(request: Request, file: UploadFile = File(...)):
 
         received = 0
         failed = 0
-        while received < total:
-            try:
-                result = await asyncio.wait_for(queue.get(), timeout=1.0)
-            except asyncio.TimeoutError:
-                if await request.is_disconnected():
-                    stop_event.set()
-                    cancelled = True
-                    break
-                if time.time() - started_at > OCR_REQUEST_TIMEOUT_S:
-                    stop_event.set()
-                    timed_out = True
-                    break
-                continue
-            received += 1
-            if not result.get("ok"):
-                failed += 1
-            yield {"data": json.dumps({"type": "page", **result})}
+        try:
+            while received < total:
+                try:
+                    result = await asyncio.wait_for(queue.get(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    # Chỉ check deadline. KHÔNG poll request.is_disconnected():
+                    # hàm đó hay báo nhầm "đã ngắt" khi có nhiều SSE đồng thời,
+                    # gây cancel oan giữa chừng ("Luồng OCR bị ngắt..."). Client
+                    # ngắt THẬT thì sse_starlette huỷ generator → finally chạy.
+                    if time.time() - started_at > OCR_REQUEST_TIMEOUT_S:
+                        timed_out = True
+                        break
+                    continue
+                received += 1
+                if not result.get("ok"):
+                    failed += 1
+                yield {"data": json.dumps({"type": "page", **result})}
+        finally:
+            # Client ngắt SSE (GeneratorExit) hoặc job xong/quá hạn → dừng render.
+            stop_event.set()
+            if received < total and not timed_out:
+                metrics.record_request(pages=received, pages_failed=failed)
+                logger.info(
+                    "ocr/stream cancel rid=%s file=%s done=%d/%d",
+                    rid, fname, received, total,
+                )
 
         try:
             await render_task
@@ -240,14 +248,6 @@ async def ocr_stream(request: Request, file: UploadFile = File(...)):
             pass
 
         dur = time.time() - started_at
-
-        if cancelled:
-            metrics.record_request(pages=received, pages_failed=failed)
-            logger.info(
-                "ocr/stream cancel rid=%s file=%s done=%d/%d dur=%.1fs",
-                rid, fname, received, total, dur,
-            )
-            return
 
         if timed_out:
             metrics.record_request(pages=received, pages_failed=failed, failed=True)
