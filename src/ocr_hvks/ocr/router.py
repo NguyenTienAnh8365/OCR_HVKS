@@ -4,12 +4,12 @@ import asyncio
 import json
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from sse_starlette.sse import EventSourceResponse
 
-from ocr_hvks.config import MAX_WORKERS, MODEL_NAME, POPPLER_PATH
+from ocr_hvks.config import MODEL_NAME, POPPLER_PATH
 from ocr_hvks.llm import client as llm_client
 from ocr_hvks.ocr.pdf_loader import (
     count_pdf_pages,
@@ -18,6 +18,7 @@ from ocr_hvks.ocr.pdf_loader import (
     resolve_poppler_path,
 )
 from ocr_hvks.ocr.pipeline import encode_pil, ocr_one_page
+from ocr_hvks.ocr.runtime import submit_page
 
 
 router = APIRouter()
@@ -73,16 +74,15 @@ async def ocr_sync(file: UploadFile = File(...)):
     started_at = time.time()
 
     def run_pipeline() -> list[dict]:
-        # Render chunk → encode → submit ngay vào executor.
-        # Trong khi poppler render chunk tiếp theo, executor đã chạy LLM cho chunk trước.
+        # Render chunk → encode → submit vào pool CHUNG (submit_page).
+        # submit_page block khi pool đầy → render tự nghẽn theo tốc độ vLLM.
         results_inner: list[dict] = []
-        with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, total)) as executor:
-            futures = []
-            for pnum, img in iter_pdf_pages(data, fname, total=total):
-                b64 = encode_pil(img)
-                futures.append(executor.submit(ocr_one_page, b64, pnum, total, fname))
-            for fut in as_completed(futures):
-                results_inner.append(fut.result())
+        futures = []
+        for pnum, img in iter_pdf_pages(data, fname, total=total):
+            b64 = encode_pil(img)
+            futures.append(submit_page(ocr_one_page, b64, pnum, total, fname))
+        for fut in as_completed(futures):
+            results_inner.append(fut.result())
         return results_inner
 
     results = await asyncio.to_thread(run_pipeline)
@@ -131,43 +131,41 @@ async def ocr_stream(request: Request, file: UploadFile = File(...)):
             result = ocr_one_page(b64, pnum, total, fname)
             asyncio.run_coroutine_threadsafe(queue.put(result), loop)
 
-        executor = ThreadPoolExecutor(max_workers=min(MAX_WORKERS, total))
         cancelled = False
-        try:
-            def render_and_submit() -> None:
-                # Chạy trong background thread: render từng chunk → submit ngay.
-                # LLM workers chạy song song với render chunk tiếp theo.
-                # stop_event ngắt vòng lặp ngay khi client disconnect, tránh
-                # render hết PDF cho 1 SSE đã đóng.
-                for pnum, img in iter_pdf_pages(data, fname, total=total):
-                    if stop_event.is_set():
-                        return
-                    b64 = encode_pil(img)
-                    if stop_event.is_set():
-                        return
-                    executor.submit(run_and_queue, b64, pnum)
 
-            render_task = loop.run_in_executor(None, render_and_submit)
+        def render_and_submit() -> None:
+            # Chạy trong background thread: render từng chunk → submit ngay vào
+            # pool CHUNG. submit_page block khi pool đầy LLM_CONCURRENCY trang
+            # → vòng render tự nghẽn theo tốc độ vLLM tiêu thụ (backpressure).
+            # stop_event ngắt vòng lặp ngay khi client disconnect, tránh render
+            # hết PDF cho 1 SSE đã đóng.
+            for pnum, img in iter_pdf_pages(data, fname, total=total):
+                if stop_event.is_set():
+                    return
+                b64 = encode_pil(img)
+                if stop_event.is_set():
+                    return
+                submit_page(run_and_queue, b64, pnum)
 
-            received = 0
-            while received < total:
-                try:
-                    result = await asyncio.wait_for(queue.get(), timeout=1.0)
-                except asyncio.TimeoutError:
-                    if await request.is_disconnected():
-                        stop_event.set()
-                        cancelled = True
-                        break
-                    continue
-                received += 1
-                yield {"data": json.dumps({"type": "page", **result})}
+        render_task = loop.run_in_executor(None, render_and_submit)
 
+        received = 0
+        while received < total:
             try:
-                await render_task
-            except Exception:
-                pass
-        finally:
-            executor.shutdown(wait=False, cancel_futures=True)
+                result = await asyncio.wait_for(queue.get(), timeout=1.0)
+            except asyncio.TimeoutError:
+                if await request.is_disconnected():
+                    stop_event.set()
+                    cancelled = True
+                    break
+                continue
+            received += 1
+            yield {"data": json.dumps({"type": "page", **result})}
+
+        try:
+            await render_task
+        except Exception:
+            pass
 
         if cancelled:
             return

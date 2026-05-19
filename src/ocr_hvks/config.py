@@ -32,7 +32,9 @@ API_PORT = int(os.environ.get("API_PORT", 8900))
 
 
 # ---------- OCR ----------
-MAX_WORKERS = int(os.environ.get("MAX_WORKERS", 128))
+# Trần số trang OCR gọi vLLM ĐỒNG THỜI trên toàn app (mọi request cộng lại).
+# Nên xấp xỉ MAX_NUM_SEQS của vLLM: đủ để nạp full tải mà không flood backend.
+LLM_CONCURRENCY = int(os.environ.get("LLM_CONCURRENCY", 512))
 DPI = int(os.environ.get("DPI", 300))
 POPPLER_PATH = os.environ.get("POPPLER_PATH") or None
 

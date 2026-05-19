@@ -10,8 +10,8 @@ from urllib3.util.retry import Retry
 
 from ocr_hvks.config import (
     LLM_CHAT_URL,
+    LLM_CONCURRENCY,
     LLM_MODELS_URL,
-    MAX_WORKERS,
     MODEL_NAME,
     TUNNEL_HEADERS,
 )
@@ -39,7 +39,7 @@ _retry = Retry(
     allowed_methods=False,   # False = retry mọi method, kể cả POST
     raise_on_status=False,
 )
-_pool_size = max(MAX_WORKERS, 128)
+_pool_size = max(LLM_CONCURRENCY, 128)
 _adapter = HTTPAdapter(
     pool_connections=_pool_size,
     pool_maxsize=_pool_size,
