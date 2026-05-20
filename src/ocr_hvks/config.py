@@ -32,9 +32,17 @@ API_PORT = int(os.environ.get("API_PORT", 8900))
 
 
 # ---------- OCR ----------
-MAX_WORKERS = int(os.environ.get("MAX_WORKERS", 128))
+# Trần số trang OCR gọi vLLM ĐỒNG THỜI trên toàn app (mọi request cộng lại).
+# Nên xấp xỉ MAX_NUM_SEQS của vLLM: đủ để nạp full tải mà không flood backend.
+LLM_CONCURRENCY = int(os.environ.get("LLM_CONCURRENCY", 512))
 DPI = int(os.environ.get("DPI", 300))
 POPPLER_PATH = os.environ.get("POPPLER_PATH") or None
+
+# Giới hạn input — chặn sớm file quá lớn / quá nhiều trang trước khi xử lý.
+MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", 100))
+MAX_PDF_PAGES = int(os.environ.get("MAX_PDF_PAGES", 1000))
+# Deadline tổng cho một job OCR (giây). Quá hạn → dừng, trả lỗi.
+OCR_REQUEST_TIMEOUT_S = int(os.environ.get("OCR_REQUEST_TIMEOUT_S", 1800))
 
 
 # ---------- LaTeX ----------

@@ -67,8 +67,8 @@ def count_pdf_pages(data: bytes, filename: str) -> int:
 def iter_pdf_pages(
     data: bytes,
     filename: str,
-    chunk_size: int = 12,
-    thread_count: int = 6,
+    chunk_size: int = 8,
+    thread_count: int = 4,
     total: int | None = None,
 ) -> Iterator[tuple[int, Image.Image]]:
     """Lazy generator yield (page_num, PIL) theo từng chunk.

@@ -6,9 +6,10 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=%i
-WorkingDirectory=/opt/ocr_hvks
-EnvironmentFile=-/opt/ocr_hvks/.env
-ExecStart=/usr/bin/env bash /opt/ocr_hvks/deploy/start_vllm.sh
+WorkingDirectory=/home/%i/AI_project/OCR_HVKS
+EnvironmentFile=-/home/%i/AI_project/OCR_HVKS/.env
+ExecStart=/usr/bin/env bash /home/%i/AI_project/OCR_HVKS/deploy/start_vllm.sh
+Environment=PATH=/home/%i/AI_project/OCR_HVKS/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Restart=on-failure
 RestartSec=10
 TimeoutStartSec=600
