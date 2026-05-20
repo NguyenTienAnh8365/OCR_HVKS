@@ -127,9 +127,6 @@ ui/ocr_v3.html?api=http://localhost:8900
 ui/ocr_v3.html?api=https://xxx-xxx-xxx.trycloudflare.com
 ```
 
-Hằng số `CONCURRENT_FILES` trong [ui/ocr_v3.html](ui/ocr_v3.html#L1431) (mặc định 24)
-chi phối số file song song mỗi tab.
-
 ## API endpoints
 
 | Method | Path | Body | Response |
@@ -149,19 +146,12 @@ chi phối số file song song mỗi tab.
 ## Pipeline dòng chảy dữ liệu
 
 ### OCR
-1. UI POST `/ocr/stream` (multipart). UI có worker pool song song hoá tối đa
-   `CONCURRENT_FILES` file mỗi tab (hằng số JS, hiện 24 — [ui/ocr_v3.html:1431](ui/ocr_v3.html#L1431)).
-2. Backend lấy số trang qua `pdf_loader.count_pdf_pages` (parse header, rẻ).
-3. `pdf_loader.iter_pdf_pages` render PDF theo **chunk 8 trang** với poppler
-   `thread_count=4`, là generator — KHÔNG đợi render hết file mới gọi LLM.
-4. Mỗi trang ngay khi render xong → `pipeline.encode_pil` (resize max-side 1568,
-   JPEG quality 95) → submit vào pool dùng chung `ocr/runtime.py`.
-5. Pool dùng chung chặn tổng số trang gọi vLLM đồng thời bằng `LLM_CONCURRENCY`
-   cho TOÀN app (mọi request cộng lại) → vLLM đủ tải mà không bị flood.
-6. `/ocr` chạy toàn bộ trong `asyncio.to_thread`; `/ocr/stream` chạy
-   `render_and_submit` ở background thread + drain `asyncio.Queue` → stream SSE
-   từng trang khi hoàn thành (không cần đợi cả file).
-7. UI tự retry nếu stream bị rớt giữa chừng.
+1. UI POST `/ocr/stream` (multipart) — tự retry nếu stream bị rớt giữa chừng.
+2. `pdf_loader.iter_pdf_pages` render PDF → ảnh theo từng chunk (poppler, DPI=300).
+3. Mỗi trang submit vào pool dùng chung `ocr/runtime.py` — trần `LLM_CONCURRENCY`
+   trang gọi vLLM đồng thời cho TOÀN app (mọi request cộng lại) → vLLM được nạp
+   đủ tải mà không bị flood.
+4. Stream SSE từng trang về UI.
 
 ### Trích xuất trường
 1. UI gộp text tất cả trang (`--- Trang N ---\n...`) → POST `/extract`.
@@ -224,10 +214,7 @@ Xem [.env.example](.env.example) cho danh sách đầy đủ. Các biến quan t
 | `GPU_MEMORY_UTILIZATION` | `0.80` | GPU memory utilization cho vLLM |
 | `MAX_MODEL_LEN` | `32768` | Context length |
 | `MAX_NUM_SEQS` | `512` | Trần sequence đồng thời vLLM xử lý |
-| `MAX_NUM_BATCHED_TOKENS` | `65536` | vLLM token budget per forward step |
-| `KV_CACHE_DTYPE` | `fp8_e5m2` | KV cache datatype (fp8 → batch lớn hơn) |
 | `LLM_CONCURRENCY` | `512` | Trần trang OCR gọi vLLM đồng thời (toàn app) |
-| `DPI` | `300` | Poppler render DPI (resize cap 1568 sau encode) |
 | `MAX_UPLOAD_MB` | `100` | Chặn file upload quá lớn (`413`) |
 | `MAX_PDF_PAGES` | `1000` | Chặn PDF quá nhiều trang (`413`) |
 | `OCR_REQUEST_TIMEOUT_S` | `1800` | Deadline cho 1 job OCR |
@@ -249,53 +236,6 @@ Xem [.env.example](.env.example) cho danh sách đầy đủ. Các biến quan t
 
 Mỗi md là bảng markdown `| STT | Mã trường | Tên trường | Col | Ghi chú |`.
 Server parse lúc startup → ép schema cố định cho mọi response.
-
-## Throughput & Tuning
-
-Đo trên 2× RTX PRO 6000 Blackwell (TP=2), Qwen3.6-35B-A3B, fp8 KV cache, dataset
-văn bản tố tụng Việt:
-
-| Cấu hình | s/page (1 user) | pages/sec aggregate |
-|---|---|---|
-| Baseline (sequential, MAX_NUM_SEQS=32) | ~2.5 | 0.40 |
-| + UI worker pool 12 file/tab | ~1.8 | 0.55 |
-| **+ Pipelined rendering + MAX_NUM_SEQS=256** | **~0.48** | **~1.6** |
-
-Server peak observed: `Running: 42 / 256`, `KV cache: 5.4%` → còn ~5× capacity
-cho multi-user (lý thuyết ~5M trang/tháng nếu kéo đủ tải).
-
-### Các thông số tăng throughput
-
-Code-side (đã apply trong repo):
-
-- **Pipelined rendering** ([pdf_loader.py](src/ocr_hvks/ocr/pdf_loader.py)
-  `iter_pdf_pages` + [router.py](src/ocr_hvks/ocr/router.py)
-  `render_and_submit`): chunk 8 trang, GPU không idle giữa các chunk.
-- **Resize cap 1568px** ([pipeline.py](src/ocr_hvks/ocr/pipeline.py) `encode_pil`):
-  Qwen-VL patch grid native ≈ 1568; vượt thì model tự down-sample. Resize ở
-  client tiết kiệm bytes truyền + visual tokens prefill.
-- **UI worker pool** ([ocr_v3.html](ui/ocr_v3.html#L1431) `CONCURRENT_FILES=24`):
-  N worker JS đua nhau lấy file từ queue, không round-robin cứng.
-
-Env-side (chỉnh trong `.env`):
-
-- `MAX_NUM_SEQS=512` (vLLM cap): tăng tiếp nếu `Running` thường chạm cap mà
-  `KV cache <70%`. Giảm nếu KV >80% hoặc thấy preempt event.
-- `LLM_CONCURRENCY=512` (client/app): nên xấp xỉ `MAX_NUM_SEQS`; giảm nếu vLLM
-  có hàng đợi lớn hoặc tail latency tăng mạnh.
-- `DPI=300` + resize cap 1568: ảnh sau resize **giống** mọi DPI ≥ 250 → throughput
-  LLM không đổi, chỉ thay đổi chất lượng pre-resize. An toàn để giữ 300.
-
-### Quan sát server lúc batch
-
-```bash
-# vLLM tự log mỗi 10s với key Engine 000:
-#   Running: <N> / Waiting: <N> / GPU KV cache: <%>
-#   Prefix cache hit rate: <%> / MM cache hit rate: <%>
-# Nếu Running luôn = MAX_NUM_SEQS và Waiting > 0 → server bão hoà.
-
-watch -n 1 'nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv'
-```
 
 ## Troubleshooting
 

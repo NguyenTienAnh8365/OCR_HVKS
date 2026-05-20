@@ -918,9 +918,9 @@ button.cta:hover { opacity:.93; }
 <div class="toast" id="toast"></div>
 
 <script>
-// Keep in sync with colab/run_local_src.py default API endpoint.
-const UI_DEFAULT_OCR_API = 'http://100.75.29.73:8900';
-const UI_DEFAULT_LATEX_API = 'http://100.75.29.73:8900';
+// Keep in sync with colab/run_local_src.py default SUBDOMAIN.
+const UI_DEFAULT_OCR_API = 'https://indicate-wanna-danny-boston.trycloudflare.com';
+const UI_DEFAULT_LATEX_API = 'https://indicate-wanna-danny-boston.trycloudflare.com';
 const urlParams = new URLSearchParams(window.location.search);
 const queryApi = (urlParams.get('api') || '').trim().replace(/\/+$/,'');
 const queryOcrApi = (urlParams.get('ocr_api') || '').trim().replace(/\/+$/,'');

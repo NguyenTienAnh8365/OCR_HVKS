@@ -8,7 +8,7 @@ import time
 import uuid
 from concurrent.futures import as_completed
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from sse_starlette.sse import EventSourceResponse
 
 from ocr_hvks.config import (
@@ -150,7 +150,7 @@ async def ocr_sync(file: UploadFile = File(...)):
 
 
 @router.post("/ocr/stream")
-async def ocr_stream(request: Request, file: UploadFile = File(...)):
+async def ocr_stream(file: UploadFile = File(...)):
     rid = uuid.uuid4().hex[:8]
     fname = file.filename or "upload"
     _validate_file_ext(fname)
@@ -195,7 +195,6 @@ async def ocr_stream(request: Request, file: UploadFile = File(...)):
             result = ocr_one_page(b64, pnum, total, fname)
             asyncio.run_coroutine_threadsafe(queue.put(result), loop)
 
-        cancelled = False
         timed_out = False
 
         def render_and_submit() -> None:
@@ -221,12 +220,7 @@ async def ocr_stream(request: Request, file: UploadFile = File(...)):
                 try:
                     result = await asyncio.wait_for(queue.get(), timeout=1.0)
                 except asyncio.TimeoutError:
-                    if await request.is_disconnected():
-                        stop_event.set()
-                        cancelled = True
-                        break
                     if time.time() - started_at > OCR_REQUEST_TIMEOUT_S:
-                        stop_event.set()
                         timed_out = True
                         break
                     continue
@@ -240,13 +234,6 @@ async def ocr_stream(request: Request, file: UploadFile = File(...)):
                 await render_task
             except Exception:
                 logger.exception("ocr/stream render lỗi rid=%s file=%s", rid, fname)
-
-            if cancelled:
-                logger.info(
-                    "ocr/stream cancelled rid=%s file=%s received=%d/%d",
-                    rid, fname, received, total,
-                )
-                return
 
             dur = time.time() - started_at
             if timed_out:
