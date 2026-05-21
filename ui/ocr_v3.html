@@ -919,8 +919,8 @@ button.cta:hover { opacity:.93; }
 
 <script>
 // Keep in sync with colab/run_local_src.py default SUBDOMAIN.
-const UI_DEFAULT_OCR_API = 'https://indicate-wanna-danny-boston.trycloudflare.com';
-const UI_DEFAULT_LATEX_API = 'https://indicate-wanna-danny-boston.trycloudflare.com';
+const UI_DEFAULT_OCR_API = 'https://abu-doug-garlic-process.trycloudflare.com';
+const UI_DEFAULT_LATEX_API = 'https://abu-doug-garlic-process.trycloudflare.com';
 const urlParams = new URLSearchParams(window.location.search);
 const queryApi = (urlParams.get('api') || '').trim().replace(/\/+$/,'');
 const queryOcrApi = (urlParams.get('ocr_api') || '').trim().replace(/\/+$/,'');
@@ -1236,8 +1236,16 @@ function fmtSz(b)   { return b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toF
 function ext(n)     { return (n.split('.').pop()||'').toUpperCase().slice(0,4); }
 function slug(t)    { return (t||'').replace(/[^a-zA-Z0-9]/g,'_'); }
 
+const MAX_FILE_MB = 200;
+const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
+
 function addFiles(nf) {
-  nf.forEach(f=>{ if(!files.find(x=>x.name===f.name&&x.size===f.size)) files.push(f); });
+  const tooBig = [];
+  nf.forEach(f=>{
+    if(f.size > MAX_FILE_BYTES){ tooBig.push(f.name); return; }
+    if(!files.find(x=>x.name===f.name&&x.size===f.size)) files.push(f);
+  });
+  if(tooBig.length) toast(`File quá lớn (>${MAX_FILE_MB}MB), bỏ qua: ${tooBig.join(', ')}`);
   renderQueue();
 }
 

@@ -40,9 +40,10 @@ OCR_HVKS/
 │   ├── llm/
 │   │   └── client.py            # HTTP client → OpenAI-compatible /v1/chat/completions
 │   ├── ocr/
-│   │   ├── router.py            # /ocr, /ocr/stream
+│   │   ├── router.py            # /ocr, /ocr/stream, /ocr/stats
 │   │   ├── pipeline.py          # encode + ocr_one_page
-│   │   ├── pdf_loader.py        # poppler/pdf2image
+│   │   ├── pdf_loader.py        # poppler/pdf2image (iter + parallel)
+│   │   ├── runtime.py           # shared ThreadPoolExecutor + semaphore
 │   │   └── prompts.py           # OCR prompt Qwen-VL
 │   ├── extract/
 │   │   ├── router.py            # /extract, /extract/schema
@@ -67,6 +68,10 @@ OCR_HVKS/
 │
 ├── ui/
 │   └── ocr_v3.html              # SPA tĩnh
+│
+├── tools/
+│   ├── bench_concurrent.py      # benchmark song song dùng aiohttp (chạy trên server)
+│   └── bench_local.py           # benchmark dùng urllib từ máy local (không cần aiohttp)
 │
 ├── docs/
 │   ├── GPU_SETUP.md             # DeepDoc + VietOCR offline (alternative)
@@ -127,13 +132,18 @@ ui/ocr_v3.html?api=http://localhost:8900
 ui/ocr_v3.html?api=https://xxx-xxx-xxx.trycloudflare.com
 ```
 
+> **Lưu ý hiệu năng**: nên trỏ UI vào URL cloudflare tunnel thay vì IP trực tiếp.
+> Browser giới hạn 6 TCP connection/origin với HTTP/1.1 — chỉ 6 stream OCR song
+> song. Cloudflare tunnel dùng HTTP/2 multiplexing → 20+ stream trên 1 kết nối →
+> vLLM nhận đủ batch → **0.29 s/trang** thay vì 0.47 s/trang qua IP thường.
+
 ## API endpoints
 
 | Method | Path | Body | Response |
 |--------|------|------|----------|
 | POST | `/ocr` | `multipart/form-data file=<pdf>` | `{pages: [{page, text, time_s, ok}]}` |
 | POST | `/ocr/stream` | same | SSE: `start` → `page` × N → `done` |
-| GET  | `/ocr/stats` | — | Counter OCR: requests / pages / failed / inflight |
+| GET  | `/ocr/stats` | — | `{requests, pages, failed, inflight_pages, active_streams, peak_streams}` |
 | POST | `/extract` | `{"text": "..."}` | `{groups: [{id, name, fields: [...]}]}` |
 | GET  | `/extract/schema` | — | Schema 4 nhóm + field list |
 | POST | `/latex` | `{"text": "..."}` | `{latex_body, full_document, time_s, debug_id}` |
@@ -147,11 +157,14 @@ ui/ocr_v3.html?api=https://xxx-xxx-xxx.trycloudflare.com
 
 ### OCR
 1. UI POST `/ocr/stream` (multipart) — tự retry nếu stream bị rớt giữa chừng.
-2. `pdf_loader.iter_pdf_pages` render PDF → ảnh theo từng chunk (poppler, DPI=300).
+2. `pdf_loader.iter_pdf_pages` render PDF → ảnh theo từng chunk (poppler, DPI=300);
+   submit trang lên vLLM ngay khi render xong từng chunk.
 3. Mỗi trang submit vào pool dùng chung `ocr/runtime.py` — trần `LLM_CONCURRENCY`
    trang gọi vLLM đồng thời cho TOÀN app (mọi request cộng lại) → vLLM được nạp
    đủ tải mà không bị flood.
-4. Stream SSE từng trang về UI.
+4. Keep-alive SSE comment `: ping` gửi mỗi 15 giây khi đang chờ vLLM — ngăn
+   cloudflare/proxy cắt connection idle.
+5. Stream SSE từng trang về UI.
 
 ### Trích xuất trường
 1. UI gộp text tất cả trang (`--- Trang N ---\n...`) → POST `/extract`.
@@ -181,9 +194,10 @@ ui/ocr_v3.html?api=https://xxx-xxx-xxx.trycloudflare.com
 | 0.6 | Resize ảnh max 1568px (giảm visual token Qwen-VL); KV cache fp8; tinh `MAX_MODEL_LEN` / `MAX_NUM_SEQS` / batched tokens; prompt gọn |
 | 0.55 | Tinh chỉnh thêm vLLM / pipeline |
 | 0.47 | **Shared HTTP session + `urllib3.Retry`** — kết nối keep-alive bị uvicorn vLLM cắt idle không còn rơi vào vòng retry `sleep(1.5s)` ẩn; urllib3 thay kết nối chết tức thì (`backoff_factor=0`) |
-| **0.30** | **Pool OCR dùng chung + `MAX_NUM_SEQS=512`** — vLLM gom gấp đôi sequence mỗi batch decode |
+| 0.47 | **Pool OCR dùng chung + `MAX_NUM_SEQS=512`** — vLLM gom gấp đôi sequence mỗi batch decode; vẫn 0.47 khi UI dùng IP thẳng (HTTP/1.1 → 6 stream) |
+| **0.29** | **HTTP/2 qua cloudflare tunnel** — multiplexing 20+ SSE stream trên 1 kết nối → vLLM nhận 130+ trang đồng thời; KV prefix cache ~85% hit (page_num đặt cuối prompt). File 221 trang: ~64s |
 
-→ Từ 3–5s xuống **~0.3s/trang** — nhanh hơn ~10–15×. File 221 trang: ~64s.
+→ Từ 3–5s xuống **~0.29 s/trang** — nhanh hơn ~10–15×.
 
 ### Cơ chế chịu tải & độ bền
 
@@ -193,8 +207,10 @@ ui/ocr_v3.html?api=https://xxx-xxx-xxx.trycloudflare.com
 - **Giới hạn input**: `MAX_UPLOAD_MB`, `MAX_PDF_PAGES` chặn sớm bằng `413` —
   tránh OOM do file lỗi/khổng lồ.
 - **Deadline**: `OCR_REQUEST_TIMEOUT_S` — job kẹt không giữ slot vô hạn.
-- **Observability**: `GET /ocr/stats` (counter requests/pages/failed/inflight) +
-  log có request-id ở mọi mốc start/done/cancel.
+- **Keep-alive SSE**: server gửi comment `: ping` mỗi 15 giây — cloudflare/nginx
+  không cắt connection idle giữa các batch trang.
+- **Observability**: `GET /ocr/stats` (counter requests/pages/failed/inflight_pages +
+  active_streams/peak_streams) + log có request-id ở mọi mốc start/done/cancel.
 - **uvicorn tuning**: `--limit-concurrency`, `--timeout-graceful-shutdown`;
   systemd `LimitNOFILE=65536`.
 - **SSE bền với mạng**: UI tự retry khi stream rớt giữa chừng. Cloudflared quick
@@ -215,7 +231,7 @@ Xem [.env.example](.env.example) cho danh sách đầy đủ. Các biến quan t
 | `MAX_MODEL_LEN` | `32768` | Context length |
 | `MAX_NUM_SEQS` | `512` | Trần sequence đồng thời vLLM xử lý |
 | `LLM_CONCURRENCY` | `512` | Trần trang OCR gọi vLLM đồng thời (toàn app) |
-| `MAX_UPLOAD_MB` | `100` | Chặn file upload quá lớn (`413`) |
+| `MAX_UPLOAD_MB` | `200` | Chặn file upload quá lớn (`413`) |
 | `MAX_PDF_PAGES` | `1000` | Chặn PDF quá nhiều trang (`413`) |
 | `OCR_REQUEST_TIMEOUT_S` | `1800` | Deadline cho 1 job OCR |
 | `API_LIMIT_CONCURRENCY` | `1024` | Trần request đồng thời uvicorn |
@@ -241,9 +257,22 @@ Server parse lúc startup → ép schema cố định cho mọi response.
 
 **vLLM không khởi động được**
 - Kiểm tra `nvidia-smi` đảm bảo 2 GPU còn trống.
-- Hạ `GPU_MEMORY_UTILIZATION=0.85` nếu OOM.
+- Hạ `GPU_MEMORY_UTILIZATION=0.90` nếu OOM.
 - `CUDA_VISIBLE_DEVICES=0,1` đúng index GPU.
 - Xem log: `journalctl -u vllm@$USER.service -f`.
+
+**OCR chậm hơn mong đợi (~0.47 s/trang thay vì ~0.29 s/trang)**
+- Kiểm tra UI đang dùng HTTP/1.1 (IP thẳng) hay HTTP/2 (cloudflare tunnel).
+- Browser giới hạn 6 TCP connection/origin với HTTP/1.1 → tối đa 6 SSE stream đồng
+  thời → vLLM nhận ít batch hơn → throughput thấp hơn.
+- Đổi URL API sang `https://xxx.trycloudflare.com` để dùng HTTP/2 — vLLM sẽ nhận
+  130+ request đồng thời, KV prefix cache ~85% hit.
+
+**SSE stream bị ngắt giữa chừng**
+- Server gửi `: ping` mỗi 15 giây để giữ connection. Nếu vẫn bị cắt, kiểm tra
+  proxy/nginx timeout (`proxy_read_timeout`, `proxy_send_timeout`).
+- Cloudflared quick tunnel đôi khi xoay kết nối HTTP/2 → stream SSE bị giết; UI
+  tự retry từ trang đã nhận — không phải lỗi server.
 
 **Tunnel cloudflared 503**
 - Chờ ~4 phút để cloudflared reconnect, hoặc restart `ocr-hvks-tunnel@$USER.service`.
@@ -277,8 +306,9 @@ $env:LLM_BASE_URL = "https://xxx.trycloudflare.com"
 ocr-hvks-server
 ```
 
-# run product
-## Cài unit files (1 lần)
+## Production (systemd)
+
+### Cài unit files (1 lần)
 ```bash
 sudo cp deploy/systemd/vllm.service            /etc/systemd/system/vllm@.service
 sudo cp deploy/systemd/ocr-hvks-api.service    /etc/systemd/system/ocr-hvks-api@.service
@@ -286,33 +316,33 @@ sudo cp deploy/systemd/ocr-hvks-tunnel.service /etc/systemd/system/ocr-hvks-tunn
 sudo systemctl daemon-reload
 ```
 
-## Start
+### Start
 ```bash
 sudo systemctl enable --now vllm@abc.service
 sudo systemctl enable --now ocr-hvks-api@abc.service
 sudo systemctl enable --now ocr-hvks-tunnel@abc.service
 ```
 
-## Xem log
+### Xem log
 ```bash
 sudo journalctl -u vllm@abc.service -f
 sudo journalctl -u ocr-hvks-api@abc.service -f
 sudo journalctl -u ocr-hvks-tunnel@abc.service -f
 ```
 
-## Restart / Stop
+### Restart / Stop
 ```bash
 sudo systemctl restart vllm@abc.service
 sudo systemctl restart ocr-hvks-api@abc.service
 sudo systemctl stop vllm@abc.service
 ```
 
-## Health check
+### Health check
 ```bash
 curl http://localhost:8900/health
 ```
 
-## Lấy URL tunnel
+### Lấy URL tunnel
 ```bash
 sudo journalctl -u ocr-hvks-tunnel@abc.service -f | grep trycloudflare
 ```
