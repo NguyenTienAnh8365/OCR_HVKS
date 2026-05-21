@@ -2,10 +2,11 @@
 
 
 def build_ocr_prompt(fname: str, page_num: int, total: int) -> str:
+    # page_num/fname đặt cuối prompt để ~600 token phía trên là shared prefix
+    # cho vLLM APC — causal attention không thể cache gì đứng SAU token khác nhau.
     return (
         "Bạn là công cụ OCR pháp lý tiếng Việt, tối ưu cho Qwen-VL để đọc văn bản scan "
-        "về cáo trạng, quyết định tố tụng, tài liệu điều tra, truy tố và xét xử.\n"
-        f"Tệp: {fname} - Trang {page_num}/{total}\n\n"
+        "về cáo trạng, quyết định tố tụng, tài liệu điều tra, truy tố và xét xử.\n\n"
 
         "NHIỆM VỤ:\n"
         "- Đọc ảnh và chép lại tối đa trung thành với văn bản gốc.\n"
@@ -46,5 +47,7 @@ def build_ocr_prompt(fname: str, page_num: int, total: int) -> str:
         "ĐẦU RA MONG MUỐN:\n"
         "- Chỉ trả về nội dung OCR cuối cùng.\n"
         "- Văn bản thường, xuống dòng rõ ràng, giữ bố cục logic của trang.\n"
-        "- Không thêm bất kỳ câu dẫn nhập hoặc kết luận nào.\n"
+        "- Không thêm bất kỳ câu dẫn nhập hoặc kết luận nào.\n\n"
+
+        f"[Tệp: {fname} — trang {page_num}/{total}]"
     )

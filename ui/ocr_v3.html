@@ -470,6 +470,7 @@ button.cta:hover { opacity:.93; }
   background:rgba(255,255,255,0.7); outline:none;
   transition:border-color .15s, width .15s;
   -moz-appearance:textfield;
+  appearance:textfield;
 }
 .rv-page-jump::-webkit-outer-spin-button,
 .rv-page-jump::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
@@ -1236,8 +1237,16 @@ function fmtSz(b)   { return b<1048576?(b/1024).toFixed(1)+' KB':(b/1048576).toF
 function ext(n)     { return (n.split('.').pop()||'').toUpperCase().slice(0,4); }
 function slug(t)    { return (t||'').replace(/[^a-zA-Z0-9]/g,'_'); }
 
+const MAX_FILE_MB = 200;
+const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
+
 function addFiles(nf) {
-  nf.forEach(f=>{ if(!files.find(x=>x.name===f.name&&x.size===f.size)) files.push(f); });
+  const tooBig = [];
+  nf.forEach(f=>{
+    if(f.size > MAX_FILE_BYTES){ tooBig.push(f.name); return; }
+    if(!files.find(x=>x.name===f.name&&x.size===f.size)) files.push(f);
+  });
+  if(tooBig.length) toast(`File quá lớn (>${MAX_FILE_MB}MB), bỏ qua: ${tooBig.join(', ')}`);
   renderQueue();
 }
 
