@@ -3,10 +3,11 @@
 import asyncio
 import json
 import logging
+import os
 import threading
 import time
 import uuid
-from concurrent.futures import as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from sse_starlette.sse import EventSourceResponse
@@ -23,6 +24,7 @@ from ocr_hvks.ocr import metrics
 from ocr_hvks.ocr.pdf_loader import (
     count_pdf_pages,
     iter_pdf_pages,
+    load_all_pages_parallel,
     resolve_pdfinfo,
     resolve_poppler_path,
 )
@@ -33,6 +35,11 @@ from ocr_hvks.ocr.runtime import inflight, submit_page
 logger = logging.getLogger("ocr_hvks.ocr")
 
 router = APIRouter()
+
+# Đếm số SSE /ocr/stream connections đang active cùng lúc
+_active_streams = 0
+_active_streams_lock = threading.Lock()
+_active_streams_peak = 0
 
 _ALLOWED_EXTENSIONS = (".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp")
 _MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
@@ -84,7 +91,10 @@ def health() -> dict:
 @router.get("/ocr/stats")
 def ocr_stats() -> dict:
     """Bộ đếm in-memory để quan sát tải OCR trong production."""
-    return {**metrics.snapshot(), "inflight_pages": inflight()}
+    with _active_streams_lock:
+        active = _active_streams
+        peak = _active_streams_peak
+    return {**metrics.snapshot(), "inflight_pages": inflight(), "active_streams": active, "peak_streams": peak}
 
 
 @router.post("/ocr")
@@ -108,16 +118,17 @@ async def ocr_sync(file: UploadFile = File(...)):
     logger.info("ocr start rid=%s file=%s pages=%d", rid, fname, total)
 
     def run_pipeline() -> list[dict]:
-        # Render chunk → encode → submit vào pool CHUNG (submit_page).
-        # submit_page block khi pool đầy → render tự nghẽn theo tốc độ vLLM.
-        results_inner: list[dict] = []
-        futures = []
-        for pnum, img in iter_pdf_pages(data, fname, total=total):
-            b64 = encode_pil(img)
-            futures.append(submit_page(ocr_one_page, b64, pnum, total, fname))
-        for fut in as_completed(futures):
-            results_inner.append(fut.result())
-        return results_inner
+        # Render TẤT CẢ trang song song (tối đa 8 Poppler threads) rồi
+        # encode song song (tối đa 8 workers) và flood vLLM trong một đợt.
+        _encode_workers = min(os.cpu_count() or 4, 8)
+        all_pages = load_all_pages_parallel(data, fname, total=total)
+        with ThreadPoolExecutor(max_workers=_encode_workers, thread_name_prefix="enc") as enc_pool:
+            b64_list = list(enc_pool.map(encode_pil, [img for _, img in all_pages]))
+        futures = [
+            submit_page(ocr_one_page, b64, pnum, total, fname)
+            for (pnum, _), b64 in zip(all_pages, b64_list)
+        ]
+        return [fut.result() for fut in as_completed(futures)]
 
     try:
         results = await asyncio.wait_for(
@@ -151,13 +162,21 @@ async def ocr_sync(file: UploadFile = File(...)):
 
 @router.post("/ocr/stream")
 async def ocr_stream(file: UploadFile = File(...)):
+    global _active_streams, _active_streams_peak
     rid = uuid.uuid4().hex[:8]
     fname = file.filename or "upload"
     _validate_file_ext(fname)
     data = await file.read()
     _validate_upload_size(data)
 
+    with _active_streams_lock:
+        _active_streams += 1
+        if _active_streams > _active_streams_peak:
+            _active_streams_peak = _active_streams
+        logger.info("stream open  rid=%s active=%d peak=%d file=%s", rid, _active_streams, _active_streams_peak, fname)
+
     async def event_generator():
+        global _active_streams
         try:
             total = count_pdf_pages(data, fname)
         except Exception as exc:
@@ -198,23 +217,20 @@ async def ocr_stream(file: UploadFile = File(...)):
         timed_out = False
 
         def render_and_submit() -> None:
-            # Chạy trong background thread: render từng chunk → submit ngay vào
-            # pool CHUNG. submit_page block khi pool đầy LLM_CONCURRENCY trang
-            # → vòng render tự nghẽn theo tốc độ vLLM tiêu thụ (backpressure).
-            # stop_event ngắt vòng lặp khi job xong/huỷ, tránh render hết PDF
-            # cho 1 SSE đã đóng.
+            # iter_pdf_pages submit từng chunk ngay khi render xong → vLLM nhận
+            # pages liên tục thay vì chờ toàn bộ file render (load_all_pages_parallel
+            # delay submission → ít concurrent hơn → KV cache thấp hơn).
             for pnum, img in iter_pdf_pages(data, fname, total=total):
                 if stop_event.is_set():
                     return
                 b64 = encode_pil(img)
-                if stop_event.is_set():
-                    return
                 submit_page(run_and_queue, b64, pnum)
 
         render_task = loop.run_in_executor(None, render_and_submit)
 
         received = 0
         failed = 0
+        last_ping = time.time()
         try:
             while received < total:
                 try:
@@ -223,8 +239,14 @@ async def ocr_stream(file: UploadFile = File(...)):
                     if time.time() - started_at > OCR_REQUEST_TIMEOUT_S:
                         timed_out = True
                         break
+                    # Keep-alive: gửi SSE comment mỗi 15s để cloudflare/proxy
+                    # không cắt connection khi đang chờ vLLM xử lý trang.
+                    if time.time() - last_ping >= 15:
+                        yield {"comment": "ping"}
+                        last_ping = time.time()
                     continue
                 received += 1
+                last_ping = time.time()
                 if not result.get("ok"):
                     failed += 1
                 yield {"data": json.dumps({"type": "page", **result})}
@@ -273,9 +295,12 @@ async def ocr_stream(file: UploadFile = File(...)):
         finally:
             # Luôn chạy: client ngắt (GeneratorExit), xong, lỗi, hay quá hạn.
             stop_event.set()
+            with _active_streams_lock:
+                _active_streams -= 1
+                cur = _active_streams
             logger.info(
-                "ocr/stream end rid=%s file=%s received=%d/%d timed_out=%s",
-                rid, fname, received, total, timed_out,
+                "stream close rid=%s active=%d file=%s received=%d/%d timed_out=%s",
+                rid, cur, fname, received, total, timed_out,
             )
 
     return EventSourceResponse(event_generator())
