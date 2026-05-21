@@ -8,7 +8,7 @@ import time
 import uuid
 from concurrent.futures import as_completed
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
 
 from ocr_hvks.config import (
@@ -88,9 +88,13 @@ def ocr_stats() -> dict:
 
 
 @router.post("/ocr")
-async def ocr_sync(file: UploadFile = File(...)):
+async def ocr_sync(request: Request):
+    form = await request.form(max_part_size=_MAX_UPLOAD_BYTES)
+    file = form.get("file")
+    if file is None:
+        raise HTTPException(status_code=422, detail="Thiếu trường 'file'.")
     rid = uuid.uuid4().hex[:8]
-    fname = file.filename or "upload"
+    fname = getattr(file, "filename", None) or "upload"
     _validate_file_ext(fname)
     data = await file.read()
     _validate_upload_size(data)
@@ -150,9 +154,13 @@ async def ocr_sync(file: UploadFile = File(...)):
 
 
 @router.post("/ocr/stream")
-async def ocr_stream(file: UploadFile = File(...)):
+async def ocr_stream(request: Request):
+    form = await request.form(max_part_size=_MAX_UPLOAD_BYTES)
+    file = form.get("file")
+    if file is None:
+        raise HTTPException(status_code=422, detail="Thiếu trường 'file'.")
     rid = uuid.uuid4().hex[:8]
-    fname = file.filename or "upload"
+    fname = getattr(file, "filename", None) or "upload"
     _validate_file_ext(fname)
     data = await file.read()
     _validate_upload_size(data)

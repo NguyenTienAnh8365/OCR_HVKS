@@ -39,7 +39,7 @@ DPI = int(os.environ.get("DPI", 300))
 POPPLER_PATH = os.environ.get("POPPLER_PATH") or None
 
 # Giới hạn input — chặn sớm file quá lớn / quá nhiều trang trước khi xử lý.
-MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", 100))
+MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", 200))
 MAX_PDF_PAGES = int(os.environ.get("MAX_PDF_PAGES", 1000))
 # Deadline tổng cho một job OCR (giây). Quá hạn → dừng, trả lỗi.
 OCR_REQUEST_TIMEOUT_S = int(os.environ.get("OCR_REQUEST_TIMEOUT_S", 1800))
